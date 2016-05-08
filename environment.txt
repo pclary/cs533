@@ -1,0 +1,41 @@
+# Mass properties
+body_mass:              20
+body_inertia:           1
+foot_mass:              0.1
+
+# Leg length parameters
+length_stiffness:       1e4
+length_damping:         1e1
+length_motor_inertia:   1e-3
+length_motor_damping:   1e-2
+length_motor_ratio:     16
+length_min:             0.3
+length_max:             1
+
+# Leg angle parameters
+angle_stiffness:        1e4
+angle_damping:          1e1
+angle_motor_inertia:    1e-3
+angle_motor_damping:    1e-2
+angle_motor_ratio:      16
+angle_min:              -1.5
+angle_max:              1.5
+
+# Environmental data
+gravity:                9.81
+ground: [x          y          stiffness  damping    friction  ]
+         -1e3       0          1e6        1e3        1
+         1e3        0          1e6        1e3        1
+
+# Simulation details
+dt:                     1e-3
+length_hardstop_kp:     4e5
+length_hardstop_kd:     4e3
+length_hardstop_dfade:  1e-3
+length_hardstop_fmax:   1e6
+angle_hardstop_kp:      1e4
+angle_hardstop_kd:      1e3
+angle_hardstop_dfade:   1e-3
+angle_hardstop_fmax:    1e4
+ground_damping_depth:   1e-5
+ground_slip_ramp:       1e-5

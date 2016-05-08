@@ -14,10 +14,6 @@ namespace sim
  * State vector representations
  ******************************************************************************/
 
-// Representation of state vector as an array
-typedef std::array<double, 14> StateVec;
-
-
 // Representation of state vector as a struct with named members
 struct State
 {
@@ -38,31 +34,6 @@ struct State
     double dl_eq;
     double dtheta;
     double dtheta_eq;
-
-
-    // These constructors are usually provided by default, but adding
-    // the conversion from StateVec constructor removes the implicit
-    // constructors
-    State() = default;
-    State(std::initializer_list<double> il)
-    {
-        assert(il.size() <= sizeof (State));
-        size_t i = 0;
-        for (double d : il)
-            (*reinterpret_cast<StateVec*>(this))[i++] = d;
-    }
-
-
-    // Methods for converting to and from array form
-    State(const StateVec& sv)
-    {
-        *reinterpret_cast<StateVec*>(this) = sv;
-    }
-
-    operator StateVec() const
-    {
-        return *reinterpret_cast<const StateVec*>(this);
-    }
 };
 
 
@@ -84,118 +55,80 @@ typedef std::vector<TimeState> StateSeries;
  ******************************************************************************/
 
 typedef State DState;
-typedef StateVec DStateVec;
 
 
 /*******************************************************************************
- * Vector math shorthands for (StateVec, StateVec)
+ * Vector math shorthands State and double
+ * Only operations that make sense are implemented
  ******************************************************************************/
 
-inline StateVec operator+(StateVec a, StateVec b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a[i] + b[i];
-    return out;
-}
+// (State, State)
+#define VEC_FUNCTION_SS(symbol)                                 \
+    inline State operator symbol (State a, State b)             \
+    {                                                           \
+        return {a.x         symbol b.x,                         \
+                a.y         symbol b.y,                         \
+                a.phi       symbol b.phi,                       \
+                a.l         symbol b.l,                         \
+                a.l_eq      symbol b.l_eq,                      \
+                a.theta     symbol b.theta,                     \
+                a.theta_eq  symbol b.theta_eq,                  \
+                a.dx        symbol b.dx,                        \
+                a.dy        symbol b.dy,                        \
+                a.dphi      symbol b.dphi,                      \
+                a.dl        symbol b.dl,                        \
+                a.dl_eq     symbol b.dl_eq,                     \
+                a.dtheta    symbol b.dtheta,                    \
+                a.dtheta_eq symbol b.dtheta_eq};                \
+    }
 
-inline StateVec operator-(StateVec a, StateVec b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a[i] - b[i];
-    return out;
-}
+VEC_FUNCTION_SS(+)
+VEC_FUNCTION_SS(-)
 
-inline StateVec operator*(StateVec a, StateVec b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a[i] * b[i];
-    return out;
-}
+// (State, double)
+#define VEC_FUNCTION_SD(symbol)                                 \
+    inline State operator symbol (State a, double b)            \
+    {                                                           \
+        return {a.x         symbol b,                           \
+                a.y         symbol b,                           \
+                a.phi       symbol b,                           \
+                a.l         symbol b,                           \
+                a.l_eq      symbol b,                           \
+                a.theta     symbol b,                           \
+                a.theta_eq  symbol b,                           \
+                a.dx        symbol b,                           \
+                a.dy        symbol b,                           \
+                a.dphi      symbol b,                           \
+                a.dl        symbol b,                           \
+                a.dl_eq     symbol b,                           \
+                a.dtheta    symbol b,                           \
+                a.dtheta_eq symbol b};                          \
+    }
 
-inline StateVec operator/(StateVec a, StateVec b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a[i] / b[i];
-    return out;
-}
+VEC_FUNCTION_SD(*)
+VEC_FUNCTION_SD(/)
 
+// (double, State)
+#define VEC_FUNCTION_DS(symbol)                                 \
+    inline State operator symbol (double a, State b)            \
+    {                                                           \
+        return {a symbol b.x,                                   \
+                a symbol b.y,                                   \
+                a symbol b.phi,                                 \
+                a symbol b.l,                                   \
+                a symbol b.l_eq,                                \
+                a symbol b.theta,                               \
+                a symbol b.theta_eq,                            \
+                a symbol b.dx,                                  \
+                a symbol b.dy,                                  \
+                a symbol b.dphi,                                \
+                a symbol b.dl,                                  \
+                a symbol b.dl_eq,                               \
+                a symbol b.dtheta,                              \
+                a symbol b.dtheta_eq};                          \
+    }
 
-/*******************************************************************************
- * Vector math shorthands for (StateVec, double)
- ******************************************************************************/
-
-inline StateVec operator+(StateVec a, double b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a[i] + b;
-    return out;
-}
-
-inline StateVec operator-(StateVec a, double b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a[i] - b;
-    return out;
-}
-
-inline StateVec operator*(StateVec a, double b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a[i] * b;
-    return out;
-}
-
-inline StateVec operator/(StateVec a, double b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a[i] / b;
-    return out;
-}
-
-
-/*******************************************************************************
- * Vector math shorthands for (double, StateVec)
- ******************************************************************************/
-
-inline StateVec operator+(double a, StateVec b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a + b[i];
-    return out;
-}
-
-inline StateVec operator-(double a, StateVec b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a - b[i];
-    return out;
-}
-
-inline StateVec operator*(double a, StateVec b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a * b[i];
-    return out;
-}
-
-inline StateVec operator/(double a, StateVec b)
-{
-    StateVec out;
-    for (size_t i = 0; i < out.size(); ++i)
-        out[i] = a / b[i];
-    return out;
-}
+VEC_FUNCTION_DS(*)
 
 
 } // namespace sim

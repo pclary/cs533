@@ -25,7 +25,28 @@ struct ExternalForces
 };
 
 
-DState hopper_eom(State state, Environment env,
+struct MotorTorques
+{
+    double length;
+    double angle;
+};
+
+
+inline MotorTorques operator+ (const MotorTorques& a, const MotorTorques& b)
+{
+    return {a.length + b.length, a.angle + b.angle};
+}
+
+
+inline MotorTorques low_level_controller(State state, double t,
+                                         ControllerTarget target,
+                                         ControllerParams params)
+{
+    return {0, 0};
+}
+
+
+inline DState hopper_eom(State state, const Environment& env,
                   MotorTorques motors, ExternalForces ext)
 {
     // Calculate motor gap torques, taking damping into account
@@ -101,14 +122,14 @@ DState hopper_eom(State state, Environment env,
 }
 
 
-double clamp(double x, double lower, double upper)
+inline double clamp(double x, double lower, double upper)
 {
     // Clamp x to the lower and upper bounds
     return std::fmin(std::fmax(x, lower), upper);
 }
 
 
-double fade_derivative(double x, double lower, double upper, double fade)
+inline double fade_derivative(double x, double lower, double upper, double fade)
 {
     // Returns 1 when outside of lower and upper bounds, fades to 0
     // along distance fade within bounds
@@ -117,7 +138,7 @@ double fade_derivative(double x, double lower, double upper, double fade)
 }
 
 
-MotorTorques hardstop_forces(State state, Environment env)
+inline MotorTorques hardstop_forces(State state, const Environment& env)
 {
     // Compute how much each DOF is over/under the hardstops
     const double l_eq_over = state.l_eq -
@@ -151,7 +172,7 @@ MotorTorques hardstop_forces(State state, Environment env)
 }
 
 
-DState hopper_dynamics(State state, double t, Environment env,
+inline DState hopper_dynamics(State state, double t, const Environment& env,
                        ControllerTarget target, ControllerParams params)
 {
     // Get motor torques from low-level controller
@@ -170,7 +191,7 @@ DState hopper_dynamics(State state, double t, Environment env,
 }
 
 
-TimeState integration_step(TimeState ts, double dt, Environment env,
+inline TimeState integration_step(TimeState ts, double dt, const Environment& env,
                            ControllerTarget target, ControllerParams params)
 {
     // Performs a 4th order runge-kutta integration step
@@ -200,6 +221,7 @@ StateSeries simulate_hopper(State initial, double stop_time, Environment env,
 {
     // Initialize output vector
     StateSeries output = {{0.0, initial}};
+    output.reserve(stop_time / env.dt);
 
     // Step simulation forward until next timestep will put it over stop time
     while (output.back().time + env.dt < stop_time)

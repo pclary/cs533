@@ -3,8 +3,8 @@ CXX     := g++
 LD      := g++
 
 INC     := -Isrc
-CFLAGS  := -std=c++14 -Wall -Wextra -Wpedantic -g
-LDFLAGS := -g
+CFLAGS  := -std=c++14 -Wall -Wextra -Wpedantic -O3 -ffast-math -march=native
+LDFLAGS := -g -O3
 LIBS    :=
 OUT     := cs533
 
