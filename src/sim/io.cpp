@@ -138,7 +138,7 @@ void load(std::vector<State>& states, std::string filename)
         State s;
         iss >> s.x  >> s.y     >> s.phi;
         iss >> s.l  >> s.l_eq  >> s.theta  >> s.theta_eq;
-        iss >> s.dx >> s.dy    >> s.phi;
+        iss >> s.dx >> s.dy    >> s.dphi;
         iss >> s.dl >> s.dl_eq >> s.dtheta >> s.dtheta_eq;
         if (iss)
             states.push_back(s);
