@@ -29,4 +29,11 @@ MotorTorques low_level_controller(State state,
                                   ControllerParams params);
 
 
+// For convenience when combining terms, may add other operators if needed
+inline MotorTorques operator+ (const MotorTorques& a, const MotorTorques& b)
+{
+    return {a.length + b.length, a.angle + b.angle};
+}
+
+
 } // namespace sim

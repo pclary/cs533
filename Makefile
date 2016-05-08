@@ -5,7 +5,7 @@ LD      := g++
 INC     := -Isrc
 CFLAGS  := -std=c++14 -Wall -Wextra -Wpedantic -g
 LDFLAGS := -g
-LIBS    := -lsfml-graphics -lsfml-window -lsfml-system
+LIBS    :=
 OUT     := cs533
 
 MODULES := sim

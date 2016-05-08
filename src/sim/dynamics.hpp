@@ -2,12 +2,15 @@
 
 #include "State.hpp"
 #include "Environment.hpp"
+#include "controller.hpp"
+#include <vector>
 
 namespace sim
 {
 
 
-State simulate_hopper(State initial, Environment env, double time = 0.0);
+StateSeries simulate_hopper(State initial, double sim_time, Environment env,
+                            ControllerTarget target, ControllerParams params);
 
 
 } // namespace sim

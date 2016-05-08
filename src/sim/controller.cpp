@@ -9,7 +9,11 @@ MotorTorques low_level_controller(State state,
                                   ControllerTarget target,
                                   ControllerParams params)
 {
-    return {0, 0};
+    // Silence unused argument warnings
+    state = {};
+    target = {};
+    params = {};
+    return {t*0, 0};
 }
 
 

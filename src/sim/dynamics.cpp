@@ -1,9 +1,17 @@
 #include "dynamics.hpp"
 #include <array>
-#include "controller.hpp"
 #include <cmath>
+#include <vector>
 
 namespace sim
+{
+
+
+/*******************************************************************************
+ * Private functions
+ ******************************************************************************/
+
+namespace
 {
 
 
@@ -45,7 +53,7 @@ DState hopper_eom(State state, Environment env,
     const double force_body_y = ext.body_y - (l_y * length_force) -
         (theta_y * angle_torque * state.l);
     const double torque_body_phi = ext.body_phi - angle_motor_gap_torque -
-        (1.0 - env.angle_motor_ratio) * angle_torque;
+        (1.0 - 1.0 / env.angle_motor_ratio) * angle_torque;
 
     // Acceleration of body
     const double ddx = force_body_x / env.body_mass;
@@ -54,11 +62,11 @@ DState hopper_eom(State state, Environment env,
 
     // Acceleration of leg equilibrium positions
     const double ddtheta_eq = (angle_motor_gap_torque -
-                               angle_torque * env.angle_motor_ratio) *
-        env.angle_motor_ratio / env.angle_motor_inertia;
+                               angle_torque / env.angle_motor_ratio) /
+        (env.angle_motor_ratio * env.angle_motor_inertia);
     const double ddl_eq = (length_motor_gap_torque -
-                           length_force * env.length_motor_ratio) *
-        env.length_motor_ratio / env.length_motor_inertia;
+                           length_force / env.length_motor_ratio) /
+        (env.length_motor_ratio * env.length_motor_inertia);
 
     // Convert external forces on foot to relative polar coordinate acceleration
     // Gravity is included in the external forces
@@ -93,11 +101,64 @@ DState hopper_eom(State state, Environment env,
 }
 
 
+double clamp(double x, double lower, double upper)
+{
+    // Clamp x to the lower and upper bounds
+    return std::fmin(std::fmax(x, lower), upper);
+}
+
+
+double fade_derivative(double x, double lower, double upper, double fade)
+{
+    // Returns 1 when outside of lower and upper bounds, fades to 0
+    // along distance fade within bounds
+    const double x_over = x - clamp(x, lower + fade, upper - fade);
+    return clamp(std::fabs(x_over / fade), lower, upper);
+}
+
+
+MotorTorques hardstop_forces(State state, Environment env)
+{
+    // Compute how much each DOF is over/under the hardstops
+    const double l_eq_over = state.l_eq -
+        clamp(state.l_eq, env.length_min, env.length_max);
+    const double theta_eq_over = state.theta_eq -
+        clamp(state.theta_eq, env.angle_min, env.angle_max);
+
+    // Fade the derivative term in near the hardstops for smoother dynamics
+    const double l_eq_dfade = fade_derivative(state.l_eq,
+                                              env.length_min,
+                                              env.length_max,
+                                              env.length_hardstop_dfade);
+    const double theta_eq_dfade = fade_derivative(state.theta_eq,
+                                                  env.angle_min,
+                                                  env.angle_max,
+                                                  env.angle_hardstop_dfade);
+
+    // Compute hardstop forces as a spring+damper system
+    const double l_eq_force = -(env.length_hardstop_kp * l_eq_over) -
+        (env.length_hardstop_kd * l_eq_dfade * state.dl_eq);
+    const double theta_eq_torque = -(env.angle_hardstop_kp * theta_eq_over) -
+        (env.angle_hardstop_kd * theta_eq_dfade * state.dtheta_eq);
+
+    // Clamp forces before returning them
+    return {clamp(l_eq_force,
+                  -env.length_hardstop_fmax,
+                  env.length_hardstop_fmax),
+            clamp(theta_eq_torque,
+                  -env.angle_hardstop_fmax,
+                  env.angle_hardstop_fmax)};
+}
+
+
 DState hopper_dynamics(State state, double t, Environment env,
                        ControllerTarget target, ControllerParams params)
 {
     // Get motor torques from low-level controller
     const MotorTorques motors = low_level_controller(state, t, target, params);
+
+    // Get hardstop forces
+    const MotorTorques hardstops = hardstop_forces(state, env);
 
     // Calculate external forces
     ExternalForces ext = {};
@@ -105,29 +166,52 @@ DState hopper_dynamics(State state, double t, Environment env,
     ext.body_y -= env.body_mass * env.gravity;
     ext.foot_y -= env.foot_mass * env.gravity;
 
-    return hopper_eom(state, env, motors, ext);
+    return hopper_eom(state, env, motors + hardstops, ext);
 }
 
 
-State integration_step(State s0, double t, double dt, Environment env,
-                       ControllerTarget target, ControllerParams params)
+TimeState integration_step(TimeState ts, double dt, Environment env,
+                           ControllerTarget target, ControllerParams params)
 {
     // Performs a 4th order runge-kutta integration step
-    DState ds0 = hopper_dynamics(s0, t, env, target, params);
-    State   s1 = s0 + ds0 * (dt/2);
-    DState ds1 = hopper_dynamics(s1, t + dt/2, env, target, params);
-    State   s2 = s0 + ds1 * (dt/2);
-    DState ds2 = hopper_dynamics(s2, t + dt/2, env, target, params);
-    State   s3 = s0 + ds2 * dt;
-    DState ds3 = hopper_dynamics(s3, t + dt, env, target, params);
-    return s0 + (ds0 + 2*ds1 + 2*ds2 + ds3) * (dt/6);
+    // dt is passed explicitly instead of using env.dt so that the
+    // integrator can take a short final timestep
+    const State   s0 = ts.state;
+    const DState ds0 = hopper_dynamics(s0, ts.time, env, target, params);
+    const State   s1 = s0 + ds0 * (dt/2);
+    const DState ds1 = hopper_dynamics(s1, ts.time + dt/2, env, target, params);
+    const State   s2 = s0 + ds1 * (dt/2);
+    const DState ds2 = hopper_dynamics(s2, ts.time + dt/2, env, target, params);
+    const State   s3 = s0 + ds2 * dt;
+    const DState ds3 = hopper_dynamics(s3, ts.time + dt, env, target, params);
+    return {ts.time + dt, s0 + (ds0 + 2*ds1 + 2*ds2 + ds3) * (dt/6)};
 }
 
 
-State simulate_hopper(State initial, Environment env, double time)
+} // namespace
+
+
+/*******************************************************************************
+ * Public functions
+ ******************************************************************************/
+
+StateSeries simulate_hopper(State initial, double stop_time, Environment env,
+                            ControllerTarget target, ControllerParams params)
 {
-    // TODO
-    return {};
+    // Initialize output vector
+    StateSeries output = {{0.0, initial}};
+
+    // Step simulation forward until next timestep will put it over stop time
+    while (output.back().time + env.dt < stop_time)
+        output.push_back(integration_step(output.back(), env.dt,
+                                          env, target, params));
+
+    // Take a short final step to hit the desired stop time
+    const double dt_final = stop_time - output.back().time;
+    output.push_back(integration_step(output.back(), dt_final,
+                                      env, target, params));
+
+    return output;
 }
 
 

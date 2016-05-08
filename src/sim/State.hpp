@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <vector>
 #include <cstddef>
 #include <initializer_list>
 #include <cassert>
@@ -63,6 +64,19 @@ struct State
         return *reinterpret_cast<const StateVec*>(this);
     }
 };
+
+
+/*******************************************************************************
+ * Timeseries of states
+ ******************************************************************************/
+
+struct TimeState
+{
+    double time;
+    State state;
+};
+
+typedef std::vector<TimeState> StateSeries;
 
 
 /*******************************************************************************

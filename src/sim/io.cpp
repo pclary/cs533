@@ -83,30 +83,31 @@ void save(const Environment& env, std::string filename)
 }
 
 
-void save(const std::vector<State>& states, std::string filename)
+void save(const StateSeries& states, std::string filename)
 {
     // Open file for writing
     std::ofstream file(filename);
 
     // Write states from vector
     file << "states: ";
-    file << "[x y phi theta theta_eq l l_eq (derivatives...)]" << std::endl;
-    for (const auto s : states)
+    file << "[t x y phi theta theta_eq l l_eq (derivatives...)]" << std::endl;
+    for (const auto ts : states)
     {
-        file << s.x         << " ";
-        file << s.y         << " ";
-        file << s.phi       << " ";
-        file << s.l         << " ";
-        file << s.l_eq      << " ";
-        file << s.theta     << " ";
-        file << s.theta_eq  << " ";
-        file << s.dx        << " ";
-        file << s.dy        << " ";
-        file << s.dphi      << " ";
-        file << s.dl        << " ";
-        file << s.dl_eq     << " ";
-        file << s.dtheta    << " ";
-        file << s.dtheta_eq << std::endl;
+        file << ts.time            << " ";
+        file << ts.state.x         << " ";
+        file << ts.state.y         << " ";
+        file << ts.state.phi       << " ";
+        file << ts.state.l         << " ";
+        file << ts.state.l_eq      << " ";
+        file << ts.state.theta     << " ";
+        file << ts.state.theta_eq  << " ";
+        file << ts.state.dx        << " ";
+        file << ts.state.dy        << " ";
+        file << ts.state.dphi      << " ";
+        file << ts.state.dl        << " ";
+        file << ts.state.dl_eq     << " ";
+        file << ts.state.dtheta    << " ";
+        file << ts.state.dtheta_eq << std::endl;
     }
 }
 
@@ -181,7 +182,7 @@ void load(Environment& env, std::string filename)
 }
 
 
-void load(std::vector<State>& states, std::string filename)
+void load(StateSeries& states, std::string filename)
 {
     // Open file for reading
     std::ifstream file(filename);
@@ -193,13 +194,15 @@ void load(std::vector<State>& states, std::string filename)
     while (std::getline(file, line))
     {
         std::istringstream iss(line);
+        double t;
         State s;
+        iss >> t;
         iss >> s.x  >> s.y     >> s.phi;
         iss >> s.l  >> s.l_eq  >> s.theta  >> s.theta_eq;
         iss >> s.dx >> s.dy    >> s.dphi;
         iss >> s.dl >> s.dl_eq >> s.dtheta >> s.dtheta_eq;
         if (iss)
-            states.push_back(s);
+            states.push_back({t, s});
     }
 }
 

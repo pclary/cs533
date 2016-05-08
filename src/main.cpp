@@ -8,9 +8,9 @@ int main()
     // Test serialization functions
 
     // Save states
-    std::vector<sim::State> states;
+    sim::StateSeries states;
     for (int i = 0; i < 100; ++i)
-        states.push_back(sim::State({i+0.01, i+0.02, i+0.03, i+0.04, i+0.05, i+0.06, i+0.07, i+0.08, i+0.09, i+0.10, i+0.11, i+0.12, i+0.13, i+0.14}));
+        states.push_back({i+0.0, {i+0.01, i+0.02, i+0.03, i+0.04, i+0.05, i+0.06, i+0.07, i+0.08, i+0.09, i+0.10, i+0.11, i+0.12, i+0.13, i+0.14}});
     sim::save(states, "states.txt");
 
     // Save environment
@@ -49,7 +49,7 @@ int main()
     sim::save(env, "environment.txt");
 
     // Load and save again
-    std::vector<sim::State> states2;
+    sim::StateSeries states2;
     sim::load(states2, "states.txt");
     sim::save(states2, "states2.txt");
 
