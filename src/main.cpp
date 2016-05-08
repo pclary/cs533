@@ -23,12 +23,16 @@ int main()
     env.length_motor_inertia = 0.06;
     env.length_motor_damping = 0.07;
     env.length_motor_ratio = 0.08;
-    env.angle_stiffness = 0.09;
-    env.angle_damping = 0.10;
-    env.angle_motor_inertia = 0.11;
-    env.angle_motor_damping = 0.11;
-    env.angle_motor_ratio = 0.13;
-    env.gravity = 0.14;
+    env.length_min = 0.09;
+    env.length_max = 0.10;
+    env.angle_stiffness = 0.11;
+    env.angle_damping = 0.12;
+    env.angle_motor_inertia = 0.13;
+    env.angle_motor_damping = 0.14;
+    env.angle_motor_ratio = 0.15;
+    env.angle_min = 0.16;
+    env.angle_max = 0.17;
+    env.gravity = 0.18;
     for (int i = 0; i < 50; ++i)
         env.ground.push_back({i+0.1, i+0.2, i+0.3, i+0.4, i+0.5});
     sim::save(env, "environment.txt");

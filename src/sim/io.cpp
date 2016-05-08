@@ -17,7 +17,7 @@ namespace sim
         std::string label;                                              \
         stream >> label >> obj.name;                                    \
         if (label != #name ":")                                         \
-            throw std::runtime_error("Bad input file format");          \
+            throw std::runtime_error("Bad input file format at " #name);\
     } while (0)
 
 
@@ -30,16 +30,23 @@ void save(const Environment& env, std::string filename)
     WRITE(env, file, body_mass);
     WRITE(env, file, body_inertia);
     WRITE(env, file, foot_mass);
+
     WRITE(env, file, length_stiffness);
     WRITE(env, file, length_damping);
     WRITE(env, file, length_motor_inertia);
     WRITE(env, file, length_motor_damping);
     WRITE(env, file, length_motor_ratio);
+    WRITE(env, file, length_min);
+    WRITE(env, file, length_max);
+
     WRITE(env, file, angle_stiffness);
     WRITE(env, file, angle_damping);
     WRITE(env, file, angle_motor_inertia);
     WRITE(env, file, angle_motor_damping);
     WRITE(env, file, angle_motor_ratio);
+    WRITE(env, file, angle_min);
+    WRITE(env, file, angle_max);
+
     WRITE(env, file, gravity);
 
     // Write ground vertex data
@@ -96,16 +103,23 @@ void load(Environment& env, std::string filename)
     READ(env, file, body_mass);
     READ(env, file, body_inertia);
     READ(env, file, foot_mass);
+
     READ(env, file, length_stiffness);
     READ(env, file, length_damping);
     READ(env, file, length_motor_inertia);
     READ(env, file, length_motor_damping);
     READ(env, file, length_motor_ratio);
+    READ(env, file, length_min);
+    READ(env, file, length_max);
+
     READ(env, file, angle_stiffness);
     READ(env, file, angle_damping);
     READ(env, file, angle_motor_inertia);
     READ(env, file, angle_motor_damping);
     READ(env, file, angle_motor_ratio);
+    READ(env, file, angle_min);
+    READ(env, file, angle_max);
+
     READ(env, file, gravity);
 
     // Read ground vertex data
