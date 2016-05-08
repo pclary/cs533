@@ -10,13 +10,13 @@ int main()
     // Save states
     std::vector<sim::State> states;
     for (int i = 0; i < 100; ++i)
-        states.push_back({i+0.01, i+0.02, i+0.03, i+0.04, i+0.05, i+0.06, i+0.07, i+0.08, i+0.09, i+0.10, i+0.11, i+0.12});
+        states.push_back(sim::State({i+0.01, i+0.02, i+0.03, i+0.04, i+0.05, i+0.06, i+0.07, i+0.08, i+0.09, i+0.10, i+0.11, i+0.12, i+0.13, i+0.14}));
     sim::save(states, "states.txt");
 
     // Save environment
     sim::Environment env;
-    env.mass = 0.01;
-    env.inertia = 0.02;
+    env.body_mass = 0.01;
+    env.body_inertia = 0.02;
     env.foot_mass = 0.03;
     env.length_stiffness = 0.04;
     env.length_damping = 0.05;

@@ -10,7 +10,7 @@ namespace sim
 
 // Convenience macros
 #define WRITE(obj, stream, name) do {                                   \
-        stream << std::setw(22) << std::left;                      \
+        stream << std::setw(22) << std::left;                           \
         stream << #name ": " << obj.name << std::endl;                  \
     } while (0)
 #define READ(obj, stream, name) do {                                    \
@@ -20,22 +20,25 @@ namespace sim
             throw std::runtime_error("Bad input file format");          \
     } while (0)
 
+
 void save(const Environment& env, std::string filename)
 {
     // Open file for writing
     std::ofstream file(filename);
 
     // Write values from Environment structure
-    WRITE(env, file, mass);
-    WRITE(env, file, inertia);
+    WRITE(env, file, body_mass);
+    WRITE(env, file, body_inertia);
     WRITE(env, file, foot_mass);
     WRITE(env, file, length_stiffness);
     WRITE(env, file, length_damping);
     WRITE(env, file, length_motor_inertia);
+    WRITE(env, file, length_motor_damping);
     WRITE(env, file, length_motor_ratio);
     WRITE(env, file, angle_stiffness);
     WRITE(env, file, angle_damping);
     WRITE(env, file, angle_motor_inertia);
+    WRITE(env, file, angle_motor_damping);
     WRITE(env, file, angle_motor_ratio);
     WRITE(env, file, gravity);
 
@@ -63,21 +66,23 @@ void save(const std::vector<State>& states, std::string filename)
 
     // Write states from vector
     file << "states: ";
-    file << "[x y theta theta_eq l l_eq (derivatives...)]" << std::endl;
+    file << "[x y phi theta theta_eq l l_eq (derivatives...)]" << std::endl;
     for (const auto s : states)
     {
         file << s.x         << " ";
         file << s.y         << " ";
-        file << s.theta     << " ";
-        file << s.theta_eq  << " ";
+        file << s.phi       << " ";
         file << s.l         << " ";
         file << s.l_eq      << " ";
+        file << s.theta     << " ";
+        file << s.theta_eq  << " ";
         file << s.dx        << " ";
         file << s.dy        << " ";
-        file << s.dtheta    << " ";
-        file << s.dtheta_eq << " ";
+        file << s.dphi      << " ";
         file << s.dl        << " ";
-        file << s.dl_eq     << std::endl;
+        file << s.dl_eq     << " ";
+        file << s.dtheta    << " ";
+        file << s.dtheta_eq << std::endl;
     }
 }
 
@@ -88,16 +93,18 @@ void load(Environment& env, std::string filename)
     std::ifstream file(filename);
 
     // Read values into Environment structure
-    READ(env, file, mass);
-    READ(env, file, inertia);
+    READ(env, file, body_mass);
+    READ(env, file, body_inertia);
     READ(env, file, foot_mass);
     READ(env, file, length_stiffness);
     READ(env, file, length_damping);
     READ(env, file, length_motor_inertia);
+    READ(env, file, length_motor_damping);
     READ(env, file, length_motor_ratio);
     READ(env, file, angle_stiffness);
     READ(env, file, angle_damping);
     READ(env, file, angle_motor_inertia);
+    READ(env, file, angle_motor_damping);
     READ(env, file, angle_motor_ratio);
     READ(env, file, gravity);
 
@@ -129,8 +136,10 @@ void load(std::vector<State>& states, std::string filename)
     {
         std::istringstream iss(line);
         State s;
-        iss >> s.x  >> s.y  >> s.theta  >> s.theta_eq  >> s.l  >> s.l_eq;
-        iss >> s.dx >> s.dy >> s.dtheta >> s.dtheta_eq >> s.dl >> s.dl_eq;
+        iss >> s.x  >> s.y     >> s.phi;
+        iss >> s.l  >> s.l_eq  >> s.theta  >> s.theta_eq;
+        iss >> s.dx >> s.dy    >> s.phi;
+        iss >> s.dl >> s.dl_eq >> s.dtheta >> s.dtheta_eq;
         if (iss)
             states.push_back(s);
     }
