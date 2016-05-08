@@ -35,6 +35,17 @@ int main()
     env.gravity = 0.18;
     for (int i = 0; i < 50; ++i)
         env.ground.push_back({i+0.1, i+0.2, i+0.3, i+0.4, i+0.5});
+    env.dt = 0.19;
+    env.length_hardstop_kp = 0.20;
+    env.length_hardstop_kd = 0.21;
+    env.length_hardstop_dfade = 0.22;
+    env.length_hardstop_fmax = 0.23;
+    env.angle_hardstop_kp = 0.24;
+    env.angle_hardstop_kd = 0.25;
+    env.angle_hardstop_dfade = 0.26;
+    env.angle_hardstop_fmax = 0.27;
+    env.ground_damping_depth = 0.28;
+    env.ground_slip_ramp = 0.29;
     sim::save(env, "environment.txt");
 
     // Load and save again

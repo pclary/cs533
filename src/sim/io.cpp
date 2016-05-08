@@ -10,7 +10,7 @@ namespace sim
 
 // Convenience macros
 #define WRITE(obj, stream, name) do {                                   \
-        stream << std::setw(22) << std::left;                           \
+        stream << std::setw(24) << std::left;                           \
         stream << #name ": " << obj.name << std::endl;                  \
     } while (0)
 #define READ(obj, stream, name) do {                                    \
@@ -27,10 +27,12 @@ void save(const Environment& env, std::string filename)
     std::ofstream file(filename);
 
     // Write values from Environment structure
+    file << "# Mass properties" << std::endl;
     WRITE(env, file, body_mass);
     WRITE(env, file, body_inertia);
     WRITE(env, file, foot_mass);
 
+    file << std::endl << "# Leg length parameters" << std::endl;
     WRITE(env, file, length_stiffness);
     WRITE(env, file, length_damping);
     WRITE(env, file, length_motor_inertia);
@@ -39,6 +41,7 @@ void save(const Environment& env, std::string filename)
     WRITE(env, file, length_min);
     WRITE(env, file, length_max);
 
+    file << std::endl << "# Leg angle parameters" << std::endl;
     WRITE(env, file, angle_stiffness);
     WRITE(env, file, angle_damping);
     WRITE(env, file, angle_motor_inertia);
@@ -47,6 +50,7 @@ void save(const Environment& env, std::string filename)
     WRITE(env, file, angle_min);
     WRITE(env, file, angle_max);
 
+    file << std::endl << "# Environmental data" << std::endl;
     WRITE(env, file, gravity);
 
     // Write ground vertex data
@@ -63,6 +67,19 @@ void save(const Environment& env, std::string filename)
         file << std::setw(w) << v.damping   << " ";
         file << v.friction  << std::endl;
     }
+
+    file << std::endl << "# Simulation details" << std::endl;
+    WRITE(env, file, dt);
+    WRITE(env, file, length_hardstop_kp);
+    WRITE(env, file, length_hardstop_kd);
+    WRITE(env, file, length_hardstop_dfade);
+    WRITE(env, file, length_hardstop_fmax);
+    WRITE(env, file, angle_hardstop_kp);
+    WRITE(env, file, angle_hardstop_kd);
+    WRITE(env, file, angle_hardstop_dfade);
+    WRITE(env, file, angle_hardstop_fmax);
+    WRITE(env, file, ground_damping_depth);
+    WRITE(env, file, ground_slip_ramp);
 }
 
 
@@ -98,12 +115,17 @@ void load(Environment& env, std::string filename)
 {
     // Open file for reading
     std::ifstream file(filename);
+    std::string line;
 
     // Read values into Environment structure
+    std::getline(file, line); // Skip section header
     READ(env, file, body_mass);
     READ(env, file, body_inertia);
     READ(env, file, foot_mass);
 
+    std::getline(file, line); // End of line
+    std::getline(file, line); // Skip blank line
+    std::getline(file, line); // Skip section header
     READ(env, file, length_stiffness);
     READ(env, file, length_damping);
     READ(env, file, length_motor_inertia);
@@ -112,6 +134,9 @@ void load(Environment& env, std::string filename)
     READ(env, file, length_min);
     READ(env, file, length_max);
 
+    std::getline(file, line); // End of line
+    std::getline(file, line); // Skip blank line
+    std::getline(file, line); // Skip section header
     READ(env, file, angle_stiffness);
     READ(env, file, angle_damping);
     READ(env, file, angle_motor_inertia);
@@ -120,11 +145,14 @@ void load(Environment& env, std::string filename)
     READ(env, file, angle_min);
     READ(env, file, angle_max);
 
+    std::getline(file, line); // End of line
+    std::getline(file, line); // Skip blank line
+    std::getline(file, line); // Skip section header
     READ(env, file, gravity);
 
     // Read ground vertex data
     env.ground.clear();
-    std::string line;
+    std::getline(file, line); // End of line
     std::getline(file, line); // Skip header
     while (std::getline(file, line))
     {
@@ -133,7 +161,23 @@ void load(Environment& env, std::string filename)
         iss >> v.x >> v.y >> v.stiffness >> v.damping >> v.friction;
         if (iss)
             env.ground.push_back(v);
+        else
+            break;
     }
+
+    // End of line already skipped
+    std::getline(file, line); // Skip section header
+    READ(env, file, dt);
+    READ(env, file, length_hardstop_kp);
+    READ(env, file, length_hardstop_kd);
+    READ(env, file, length_hardstop_dfade);
+    READ(env, file, length_hardstop_fmax);
+    READ(env, file, angle_hardstop_kp);
+    READ(env, file, angle_hardstop_kd);
+    READ(env, file, angle_hardstop_dfade);
+    READ(env, file, angle_hardstop_fmax);
+    READ(env, file, ground_damping_depth);
+    READ(env, file, ground_slip_ramp);
 }
 
 
