@@ -2,18 +2,22 @@
 #include <array>
 #include <cmath>
 #include <vector>
+#include <limits>
+#include <cstddef>
 
 namespace sim
 {
 
-
 /*******************************************************************************
- * Private functions
+ * Private functions and data structures
  ******************************************************************************/
 
 namespace
 {
 
+/*******************************************************************************
+ * Data structures
+ ******************************************************************************/
 
 struct ExternalForces
 {
@@ -32,22 +36,69 @@ struct MotorTorques
 };
 
 
+struct Force
+{
+    double x;
+    double y;
+};
+
+
+struct PointState
+{
+    double x;
+    double y;
+    double dx;
+    double dy;
+};
+
+
 inline MotorTorques operator+ (const MotorTorques& a, const MotorTorques& b)
 {
     return {a.length + b.length, a.angle + b.angle};
 }
 
 
-inline MotorTorques low_level_controller(State state, double t,
-                                         ControllerTarget target,
-                                         ControllerParams params)
+/*******************************************************************************
+ * Utility functions
+ ******************************************************************************/
+
+inline double clamp(double x, double lower, double upper)
+{
+    // Clamp x to the lower and upper bounds
+    return std::fmin(std::fmax(x, lower), upper);
+}
+
+
+inline double fade_derivative(double x, double lower, double upper, double fade)
+{
+    // Returns 1 when outside of lower and upper bounds, fades to 0
+    // along distance fade within bounds
+    const double x_over = x - clamp(x, lower + fade, upper - fade);
+    return clamp(std::fabs(x_over / fade), lower, upper);
+}
+
+
+/*******************************************************************************
+ * Low-level controller
+ ******************************************************************************/
+
+inline MotorTorques low_level_controller(State,
+                                         double,
+                                         ControllerTarget,
+                                         ControllerParams)
 {
     return {0, 0};
 }
 
 
-inline DState hopper_eom(State state, const Environment& env,
-                  MotorTorques motors, ExternalForces ext)
+/*******************************************************************************
+ * Equations of motion
+ ******************************************************************************/
+
+inline DState hopper_eom(State state,
+                         const Environment& env,
+                         MotorTorques motors,
+                         ExternalForces ext)
 {
     // Calculate motor gap torques, taking damping into account
     const double angle_motor_gap_torque = motors.angle -
@@ -122,19 +173,42 @@ inline DState hopper_eom(State state, const Environment& env,
 }
 
 
-inline double clamp(double x, double lower, double upper)
+inline Force ground_contact_model(PointState point, const Environment& env)
 {
-    // Clamp x to the lower and upper bounds
-    return std::fmin(std::fmax(x, lower), upper);
-}
+    // Find the point on the ground closest to the point to test
+    double min_dist2 = std::numeric_limits<double>::max();
+    double min_p = 0;
+    size_t min_dist_index = 0;
+    for (size_t i = 0; i < env.ground.size() - 1; ++i)
+    {
+        const double xg = env.ground[i].x;
+        const double yg = env.ground[i].y;
+        const double dxg = env.ground[i+1].x - xg;
+        const double dyg = env.ground[i+1].y - yg;
 
+        // Take dot product to project test point onto line, then
+        // normalize and clamp to keep within line segment bounds
+        const double p = clamp(((point.x - xg) * dxg + (point.x - xg) * dxg) /
+                               (dxg * dxg + dyg * dyg), 0.0, 1.0);
 
-inline double fade_derivative(double x, double lower, double upper, double fade)
-{
-    // Returns 1 when outside of lower and upper bounds, fades to 0
-    // along distance fade within bounds
-    const double x_over = x - clamp(x, lower + fade, upper - fade);
-    return clamp(std::fabs(x_over / fade), lower, upper);
+        // Nearest point on the line segment to the test point
+        const double x_near = xg + (p * dxg);
+        const double y_near = yg + (p * dyg);
+
+        // Squared distance from line point to test point
+        const double dist2 = ((point.x - x_near) * (point.x - x_near)) +
+            ((point.y - y_near) * (point.y - y_near));
+
+        // If this is a new minimum, save values
+        if (dist2 < min_dist2)
+        {
+            min_dist2 = dist2;
+            min_p = p;
+            min_dist_index = i;
+        }
+    }
+
+    return {0, 0};
 }
 
 
@@ -172,8 +246,11 @@ inline MotorTorques hardstop_forces(State state, const Environment& env)
 }
 
 
-inline DState hopper_dynamics(State state, double t, const Environment& env,
-                       ControllerTarget target, ControllerParams params)
+inline DState hopper_dynamics(State state,
+                              double t,
+                              const Environment& env,
+                              ControllerTarget target,
+                              ControllerParams params)
 {
     // Get motor torques from low-level controller
     const MotorTorques motors = low_level_controller(state, t, target, params);
@@ -182,17 +259,39 @@ inline DState hopper_dynamics(State state, double t, const Environment& env,
     const MotorTorques hardstops = hardstop_forces(state, env);
 
     // Calculate external forces
-    ExternalForces ext = {};
-    // Needs environment interaction
-    ext.body_y -= env.body_mass * env.gravity;
-    ext.foot_y -= env.foot_mass * env.gravity;
+    const double l_x = std::sin(state.theta + state.phi);
+    const double l_y = -std::cos(state.theta + state.phi);
+    const double theta_x = -l_y;
+    const double theta_y = l_x;
+    const PointState body_point = {state.x, state.y, state.dx, state.dy};
+    const Force body_ground_force = ground_contact_model(body_point, env);
+    const PointState foot_point = {
+        state.x + (l_x * state.l),
+        state.y + (l_y * state.l),
+        state.dx + (l_x * state.dl) + (theta_x * state.l * state.dtheta),
+        state.dy + (l_y * state.dl) + (theta_y * state.l * state.dtheta)};
+    const Force foot_ground_force = ground_contact_model(foot_point, env);
+
+    const ExternalForces ext = {
+        body_ground_force.x,
+        body_ground_force.y - (env.body_mass * env.gravity),
+        0.0,
+        foot_ground_force.x,
+        foot_ground_force.y - (env.foot_mass * env.gravity)};
 
     return hopper_eom(state, env, motors + hardstops, ext);
 }
 
 
-inline TimeState integration_step(TimeState ts, double dt, const Environment& env,
-                           ControllerTarget target, ControllerParams params)
+/*******************************************************************************
+ * Integrator
+ ******************************************************************************/
+
+inline TimeState integration_step(TimeState ts,
+                                  double dt,
+                                  const Environment& env,
+                                  ControllerTarget target,
+                                  ControllerParams params)
 {
     // Performs a 4th order runge-kutta integration step
     // dt is passed explicitly instead of using env.dt so that the
@@ -216,8 +315,11 @@ inline TimeState integration_step(TimeState ts, double dt, const Environment& en
  * Public functions
  ******************************************************************************/
 
-StateSeries simulate_hopper(State initial, double stop_time, Environment env,
-                            ControllerTarget target, ControllerParams params)
+StateSeries simulate_hopper(State initial,
+                            double stop_time,
+                            Environment env,
+                            ControllerTarget target,
+                            ControllerParams params)
 {
     // Initialize output vector
     StateSeries output = {{0.0, initial}};
