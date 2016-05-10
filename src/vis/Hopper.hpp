@@ -19,8 +19,9 @@ private:
     sf::View view;
 
     // Robot
-    sf::CircleShape body;
-    sf::VertexArray indicator;
+    const float body_radius;
+    sf::VertexArray body_fill;
+    sf::VertexArray body_outline;
     sf::VertexArray leg;
     sf::VertexArray spring;
     sf::VertexArray foot;
