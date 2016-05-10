@@ -12,9 +12,8 @@ int main()
                           0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
     // Simulate for a while
-    for (int i = 0; i < 1000; ++i)
-        sim::StateSeries ss = sim::simulate_hopper(initial, 10.0, env, {}, {});
+    sim::StateSeries ss = sim::simulate_hopper(initial, 10.0, env, {}, {});
 
     // Save output
-    // sim::save(ss, "statedata.txt");
+    sim::save(ss, "statedata.txt");
 }
