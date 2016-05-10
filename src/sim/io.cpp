@@ -87,27 +87,30 @@ void save(const StateSeries& states, std::string filename)
 {
     // Open file for writing
     std::ofstream file(filename);
+    file.precision(4);
 
     // Write states from vector
-    file << "states: ";
-    file << "[t x y phi theta theta_eq l l_eq (derivatives...)]" << std::endl;
+    file << "t       x           y           phi         l           l_eq        theta       theta_eq    dx          dy          dphi        dl          dl_eq       dtheta      dtheta_eq" << std::endl;
     for (const auto ts : states)
     {
-        file << ts.time            << " ";
-        file << ts.state.x         << " ";
-        file << ts.state.y         << " ";
-        file << ts.state.phi       << " ";
-        file << ts.state.l         << " ";
-        file << ts.state.l_eq      << " ";
-        file << ts.state.theta     << " ";
-        file << ts.state.theta_eq  << " ";
-        file << ts.state.dx        << " ";
-        file << ts.state.dy        << " ";
-        file << ts.state.dphi      << " ";
-        file << ts.state.dl        << " ";
-        file << ts.state.dl_eq     << " ";
-        file << ts.state.dtheta    << " ";
-        file << ts.state.dtheta_eq << std::endl;
+        const int w = 11;
+        file << std::fixed;
+        file << std::setw(6) << ts.time            << " ";
+        file << std::scientific;
+        file << std::setw(w) << ts.state.x         << " ";
+        file << std::setw(w) << ts.state.y         << " ";
+        file << std::setw(w) << ts.state.phi       << " ";
+        file << std::setw(w) << ts.state.l         << " ";
+        file << std::setw(w) << ts.state.l_eq      << " ";
+        file << std::setw(w) << ts.state.theta     << " ";
+        file << std::setw(w) << ts.state.theta_eq  << " ";
+        file << std::setw(w) << ts.state.dx        << " ";
+        file << std::setw(w) << ts.state.dy        << " ";
+        file << std::setw(w) << ts.state.dphi      << " ";
+        file << std::setw(w) << ts.state.dl        << " ";
+        file << std::setw(w) << ts.state.dl_eq     << " ";
+        file << std::setw(w) << ts.state.dtheta    << " ";
+        file << std::setw(w) << ts.state.dtheta_eq << std::endl;
     }
 }
 
