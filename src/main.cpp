@@ -1,4 +1,5 @@
 #include "sim/sim.hpp"
+#include "vis/vis.hpp"
 
 
 int main()
@@ -13,6 +14,11 @@ int main()
 
     // Simulate for a while
     sim::StateSeries ss = sim::simulate_hopper(initial, 10.0, env, {}, {});
+
+    // Display output
+    vis::Hopper hopper(env);
+    for (auto ts : ss)
+        hopper.update(ts.state);
 
     // Save output
     sim::save(ss, "statedata.txt");
