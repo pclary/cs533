@@ -74,7 +74,7 @@ inline double fade_derivative(double x, double lower, double upper, double fade)
     // Returns 1 when outside of lower and upper bounds, fades to 0
     // along distance fade within bounds
     const double x_over = x - clamp(x, lower + fade, upper - fade);
-    return clamp(std::fabs(x_over / fade), lower, upper);
+    return clamp(std::fabs(x_over / fade), 0, 1);
 }
 
 
@@ -108,9 +108,13 @@ inline DState hopper_eom(State state,
 
     // Calculate internal spring forces
     const double length_compression = state.l_eq - state.l;
-    const double length_force = env.length_stiffness * length_compression;
+    const double length_spring_force =
+        (env.length_stiffness * length_compression) +
+        (env.length_damping * state.dl);
     const double angle_compression = state.theta_eq - state.theta;
-    const double angle_torque = env.angle_stiffness * angle_compression;
+    const double angle_spring_torque =
+        (env.angle_stiffness * angle_compression) +
+        (env.angle_damping * state.dtheta);
 
     // Get basis vectors for internal spring forces
     // Positive when acting on the foot, negate for body
@@ -120,12 +124,12 @@ inline DState hopper_eom(State state,
     const double theta_y = l_x;
 
     // Forces on body
-    const double force_body_x = ext.body_x - (l_x * length_force) -
-        (theta_x * angle_torque * state.l);
-    const double force_body_y = ext.body_y - (l_y * length_force) -
-        (theta_y * angle_torque * state.l);
+    const double force_body_x = ext.body_x - (l_x * length_spring_force) -
+        (theta_x * angle_spring_torque * state.l);
+    const double force_body_y = ext.body_y - (l_y * length_spring_force) -
+        (theta_y * angle_spring_torque * state.l);
     const double torque_body_phi = ext.body_phi - angle_motor_gap_torque -
-        (1.0 - 1.0 / env.angle_motor_ratio) * angle_torque;
+        (1.0 - 1.0 / env.angle_motor_ratio) * angle_spring_torque;
 
     // Acceleration of body
     const double ddx = force_body_x / env.body_mass;
@@ -134,20 +138,22 @@ inline DState hopper_eom(State state,
 
     // Acceleration of leg equilibrium positions
     const double ddtheta_eq = (angle_motor_gap_torque -
-                               angle_torque / env.angle_motor_ratio) /
+                               angle_spring_torque / env.angle_motor_ratio) /
         (env.angle_motor_ratio * env.angle_motor_inertia);
     const double ddl_eq = (length_motor_gap_torque -
-                           length_force / env.length_motor_ratio) /
+                           length_spring_force / env.length_motor_ratio) /
         (env.length_motor_ratio * env.length_motor_inertia);
 
     // Convert external forces on foot to relative polar coordinate acceleration
     // Gravity is included in the external forces
     const double accel_offset_foot_x = ext.foot_x / env.foot_mass - ddx;
     const double accel_offset_foot_y = ext.foot_y / env.foot_mass - ddy;
-    const double accel_foot_l = (accel_offset_foot_x * l_x) +
-        (accel_offset_foot_y * l_y);
-    const double accel_foot_theta = (accel_offset_foot_x * theta_x) +
-        (accel_offset_foot_y * theta_y) - ddphi;
+    const double foot_inertia = env.foot_mass * state.l * state.l;
+    const double accel_foot_l = (length_spring_force / env.foot_mass) +
+        (accel_offset_foot_x * l_x) + (accel_offset_foot_y * l_y);
+    const double accel_foot_theta = (angle_spring_torque / foot_inertia) +
+        (accel_offset_foot_x * theta_x) + (accel_offset_foot_y * theta_y) -
+        ddphi;
 
     // Acceleration of actual leg positions
     const double dtheta_abs = state.dtheta + state.dphi;
@@ -177,38 +183,115 @@ inline Force ground_contact_model(PointState point, const Environment& env)
 {
     // Find the point on the ground closest to the point to test
     double min_dist2 = std::numeric_limits<double>::max();
-    double min_p = 0;
-    size_t min_dist_index = 0;
+    double min_p = 0.0;
+    double min_x_line = 0.0;
+    double min_y_line = 0.0;
+    double min_seg_length2 = 0.0;
+    size_t min_index = 0;
     for (size_t i = 0; i < env.ground.size() - 1; ++i)
     {
         const double xg = env.ground[i].x;
         const double yg = env.ground[i].y;
-        const double dxg = env.ground[i+1].x - xg;
-        const double dyg = env.ground[i+1].y - yg;
+        const double dxg = env.ground[i + 1].x - xg;
+        const double dyg = env.ground[i + 1].y - yg;
 
         // Take dot product to project test point onto line, then
-        // normalize and clamp to keep within line segment bounds
-        const double p = clamp(((point.x - xg) * dxg + (point.x - xg) * dxg) /
-                               (dxg * dxg + dyg * dyg), 0.0, 1.0);
+        // normalize with the segment length squared and clamp to keep
+        // within line segment bounds
+        const double dot_product = (point.x - xg) * dxg + (point.y - yg) * dyg;
+        const double seg_length2 = (dxg * dxg) + (dyg * dyg);
+        const double p = clamp(dot_product / seg_length2, 0, 1);
 
         // Nearest point on the line segment to the test point
-        const double x_near = xg + (p * dxg);
-        const double y_near = yg + (p * dyg);
+        const double x_line = xg + (p * dxg);
+        const double y_line = yg + (p * dyg);
 
         // Squared distance from line point to test point
-        const double dist2 = ((point.x - x_near) * (point.x - x_near)) +
-            ((point.y - y_near) * (point.y - y_near));
+        const double dist2 = ((point.x - x_line) * (point.x - x_line)) +
+            ((point.y - y_line) * (point.y - y_line));
 
         // If this is a new minimum, save values
-        if (dist2 < min_dist2)
+        // Ignore segments with zero length
+        if (dist2 < min_dist2 && seg_length2 > 0.0)
         {
             min_dist2 = dist2;
             min_p = p;
-            min_dist_index = i;
+            min_x_line = x_line;
+            min_y_line = y_line;
+            min_seg_length2 = seg_length2;
+            min_index = i;
         }
     }
 
-    return {0, 0};
+    // Check whether point is on the ground side (right hand side) of the line
+    // If not, return immediately with zero ground reaction force
+    const double dxg = env.ground[min_index + 1].x - env.ground[min_index].x;
+    const double dyg = env.ground[min_index + 1].y - env.ground[min_index].y;
+    const double dxp = point.x - env.ground[min_index].x;
+    const double dyp = point.y - env.ground[min_index].y;
+    const double cross_product = (dxg * dyp) - (dyg * dxp);
+    if (cross_product > 0.0)
+        return {0.0, 0.0};
+
+    // If execution reaches here, the point is in the ground
+    // Note that if the test point is outside the bounds of the
+    // polyline, it is handled incorrectly
+
+    // Get normal and tangent basis vectors
+    // NOTE: Normal is into ground, tangent is 90 deg CCW from normal
+    const double depth = std::sqrt(min_dist2);
+    double tangent_x, tangent_y, normal_x, normal_y;
+    if (min_p == 0.0 || min_p == 1.0)
+    {
+        // Special case for corners -- normal is aligned with vector
+        // from test point to corner
+        normal_x = -(point.x - min_x_line) / depth;
+        normal_y = -(point.y - min_y_line) / depth;
+        tangent_x = normal_y;
+        tangent_y = -normal_x;
+    }
+    else
+    {
+        // Typical case -- use segment direction for tangent
+        const double seg_length = std::sqrt(min_seg_length2);
+        tangent_x = dxg / seg_length;
+        tangent_y = dyg / seg_length;
+        normal_x = -tangent_y;
+        normal_y = tangent_x;
+    }
+
+    // Get derivative of depth
+    const double ddepth = (-normal_x * point.dx) + (-normal_y * point.dy);
+
+    // Get interpolated ground properties
+    const double ground_stiffness = env.ground[min_index].stiffness +
+        (min_p * (env.ground[min_index + 1].stiffness -
+                  env.ground[min_index].stiffness));
+    const double ground_damping = env.ground[min_index].damping +
+        (min_p * (env.ground[min_index + 1].damping -
+                  env.ground[min_index].damping));
+    const double ground_friction = env.ground[min_index].friction +
+        (min_p * (env.ground[min_index + 1].friction -
+                  env.ground[min_index].friction));
+
+    // Damping adjustment factor
+    const double damping_factor = depth / (depth + env.ground_damping_depth);
+
+    // Normal force (spring + damper) should only be positive upwards
+    const double normal_force =
+        std::fmax((depth * ground_stiffness) +
+                  (ddepth * damping_factor * ground_damping), 0.0);
+
+    // Tangent force (friction) before finding sign and smoothing discontinuity
+    const double friction_max = ground_friction * normal_force;
+    const double tangent_velocity = (tangent_x * point.dx) +
+        (tangent_y * point.dy);
+    const double viscous_friction_factor =
+        clamp(tangent_velocity / (friction_max * env.ground_slip_ramp), 0, 1);
+    const double tangent_force = -viscous_friction_factor * friction_max;
+
+    return {(normal_x * normal_force) + (tangent_x * tangent_force),
+            (normal_y * normal_force) + (tangent_y * tangent_force)};
 }
 
 
@@ -263,8 +346,6 @@ inline DState hopper_dynamics(State state,
     const double l_y = -std::cos(state.theta + state.phi);
     const double theta_x = -l_y;
     const double theta_y = l_x;
-    const PointState body_point = {state.x, state.y, state.dx, state.dy};
-    const Force body_ground_force = ground_contact_model(body_point, env);
     const PointState foot_point = {
         state.x + (l_x * state.l),
         state.y + (l_y * state.l),
@@ -273,8 +354,8 @@ inline DState hopper_dynamics(State state,
     const Force foot_ground_force = ground_contact_model(foot_point, env);
 
     const ExternalForces ext = {
-        body_ground_force.x,
-        body_ground_force.y - (env.body_mass * env.gravity),
+        0.0,
+        -(env.body_mass * env.gravity),
         0.0,
         foot_ground_force.x,
         foot_ground_force.y - (env.foot_mass * env.gravity)};
@@ -319,6 +400,7 @@ StateSeries simulate_hopper(State initial,
                             double stop_time,
                             Environment env,
                             ControllerTarget target,
+
                             ControllerParams params)
 {
     // Initialize output vector

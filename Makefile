@@ -5,10 +5,10 @@ LD      := g++
 INC     := -Isrc
 CFLAGS  := -std=c++14 -Wall -Wextra -Wpedantic -g -O3 -ffast-math -march=native
 LDFLAGS := -g -O3
-LIBS    :=
+LIBS    := -lsfml-graphics -lsfml-window -lsfml-system
 OUT     := cs533
 
-MODULES := sim
+MODULES := sim vis
 SRC_DIR := src $(addprefix src/,$(MODULES))
 OBJ_DIR := obj $(addprefix obj/,$(MODULES))
 SRC     := $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.cpp))
