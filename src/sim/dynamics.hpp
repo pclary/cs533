@@ -15,6 +15,8 @@ struct ControllerTarget
 
 struct ControllerParams
 {
+    double energy_injection;
+    double horizontal_push;
 };
 
 
