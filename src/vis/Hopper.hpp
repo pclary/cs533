@@ -13,6 +13,7 @@ class Hopper
 public:
     Hopper(const sim::Environment& env);
     void update(sim::State state);
+    void animate(sim::StateSeries states, double rate = 1.0);
 
 private:
     sf::RenderWindow window;

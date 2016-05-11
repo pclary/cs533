@@ -1,5 +1,6 @@
 #include "Hopper.hpp"
 #include <cmath>
+#include <cstddef>
 
 #define RAD2DEG (-180.f / M_PI)
 
@@ -72,8 +73,6 @@ Hopper::Hopper(const sim::Environment& env) :
 
     for (auto gv : env.ground)
         ground.append({sf::Vector2f(gv.x, gv.y), sf::Color::Blue});
-
-    window.setFramerateLimit(60);
 }
 
 
@@ -131,6 +130,29 @@ void Hopper::update(sim::State state)
     // Display visualization
     window.setView(view);
     window.display();
+}
+
+
+void Hopper::animate(sim::StateSeries states, double rate)
+{
+    sf::Clock clock;
+    double t = states.front().time;
+
+    while (t <= states.back().time)
+    {
+        // Get interpolated state at time t
+        size_t i;
+        for (i = 0; i < states.size(); ++i)
+            if (states[i].time > t) break;
+
+        double p = (t - states[i-1].time) / (states[i].time - states[i-1].time);
+        sim::State s = states[i-1].state +
+            (p * (states[i].state - states[i-1].state));
+        update(s);
+
+        t = (clock.getElapsedTime().asSeconds() * rate) + states.front().time;
+    }
+
 }
 
 
