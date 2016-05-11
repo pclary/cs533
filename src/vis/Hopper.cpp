@@ -78,8 +78,8 @@ Hopper::Hopper(const sim::Environment& env) :
 
 void Hopper::update(sim::State state)
 {
-    // Check if window is still open
-    if (!window.isOpen())
+    // Check if visualization is still alive (i.e. window hasn't been closed)
+    if (!isAlive())
         return;
 
     // Respond to window events
@@ -138,7 +138,7 @@ void Hopper::animate(sim::StateSeries states, double rate)
     sf::Clock clock;
     double t = states.front().time;
 
-    while (t <= states.back().time)
+    while (isAlive() && t <= states.back().time)
     {
         // Get interpolated state at time t
         size_t i;
