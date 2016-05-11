@@ -110,11 +110,11 @@ inline DState hopper_eom(State state,
     const double length_compression = state.l_eq - state.l;
     const double length_spring_force =
         (env.length_stiffness * length_compression) +
-        (env.length_damping * state.dl);
+        (env.length_damping * -state.dl);
     const double angle_compression = state.theta_eq - state.theta;
     const double angle_spring_torque =
         (env.angle_stiffness * angle_compression) +
-        (env.angle_damping * state.dtheta);
+        (env.angle_damping * -state.dtheta);
 
     // Get basis vectors for internal spring forces
     // Positive when acting on the foot, negate for body
@@ -287,7 +287,7 @@ inline Force ground_contact_model(PointState point, const Environment& env)
     const double tangent_velocity = (tangent_x * point.dx) +
         (tangent_y * point.dy);
     const double viscous_friction_factor =
-        clamp(tangent_velocity / (friction_max * env.ground_slip_ramp), 0, 1);
+        clamp(tangent_velocity / (friction_max * env.ground_slip_ramp), -1, 1);
     const double tangent_force = -viscous_friction_factor * friction_max;
 
     return {(normal_x * normal_force) + (tangent_x * tangent_force),

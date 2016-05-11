@@ -1,7 +1,7 @@
 #include "Hopper.hpp"
 #include <cmath>
 
-#define RAD2DEG (180.f / M_PI)
+#define RAD2DEG (-180.f / M_PI)
 
 namespace vis
 {

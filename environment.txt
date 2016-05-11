@@ -1,7 +1,7 @@
 # Mass properties
 body_mass:              20
 body_inertia:           1
-foot_mass:              0.1
+foot_mass:              0.4
 
 # Leg length parameters
 length_stiffness:       1e4
