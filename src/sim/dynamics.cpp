@@ -82,10 +82,17 @@ inline double fade_derivative(double x, double lower, double upper, double fade)
  * Low-level controller
  ******************************************************************************/
 
+struct ControllerState
+{
+
+};
+
 inline MotorTorques low_level_controller(State,
                                          double,
+                                         const Environment&,
                                          ControllerTarget,
-                                         ControllerParams)
+                                         ControllerParams,
+                                         ControllerState&)
 {
     return {0, 0};
 }
@@ -107,14 +114,13 @@ inline DState hopper_eom(State state,
         (env.length_motor_damping * state.dl_eq * env.length_motor_ratio);
 
     // Calculate internal spring forces
-    const double length_compression = state.l_eq - state.l;
     const double length_spring_force =
-        (env.length_stiffness * length_compression) +
-        (env.length_damping * -state.dl);
-    const double angle_compression = state.theta_eq - state.theta;
+        (env.length_stiffness * (state.l_eq - state.l)) +
+        (env.length_damping * (state.dl_eq - state.dl));
     const double angle_spring_torque =
-        (env.angle_stiffness * angle_compression) +
-        (env.angle_damping * -state.dtheta);
+        (env.angle_stiffness * (state.theta_eq - state.theta)) +
+        (env.angle_damping * (state.dtheta_eq - state.dtheta));
+    const double angle_spring_force = angle_spring_torque / state.l;
 
     // Get basis vectors for internal spring forces
     // Positive when acting on the foot, negate for body
@@ -125,9 +131,9 @@ inline DState hopper_eom(State state,
 
     // Forces on body
     const double force_body_x = ext.body_x - (l_x * length_spring_force) -
-        (theta_x * angle_spring_torque * state.l);
+        (theta_x * angle_spring_force);
     const double force_body_y = ext.body_y - (l_y * length_spring_force) -
-        (theta_y * angle_spring_torque * state.l);
+        (theta_y * angle_spring_force);
     const double torque_body_phi = ext.body_phi - angle_motor_gap_torque -
         (1.0 - 1.0 / env.angle_motor_ratio) * angle_spring_torque;
 
@@ -148,18 +154,16 @@ inline DState hopper_eom(State state,
     // Gravity is included in the external forces
     const double accel_offset_foot_x = ext.foot_x / env.foot_mass - ddx;
     const double accel_offset_foot_y = ext.foot_y / env.foot_mass - ddy;
-    const double foot_inertia = env.foot_mass * state.l * state.l;
     const double accel_foot_l = (length_spring_force / env.foot_mass) +
         (accel_offset_foot_x * l_x) + (accel_offset_foot_y * l_y);
-    const double accel_foot_theta = (angle_spring_torque / foot_inertia) +
-        (accel_offset_foot_x * theta_x) + (accel_offset_foot_y * theta_y) -
-        ddphi;
+    const double accel_foot_theta = (angle_spring_force / env.foot_mass) +
+        (accel_offset_foot_x * theta_x) + (accel_offset_foot_y * theta_y);
 
     // Acceleration of actual leg positions
     const double dtheta_abs = state.dtheta + state.dphi;
     const double ddl = accel_foot_l + (state.l * dtheta_abs * dtheta_abs);
     const double ddtheta = (accel_foot_theta -
-                            (2 * state.dl * dtheta_abs)) / state.l;
+                            (2 * state.dl * dtheta_abs)) / state.l - ddphi;
 
     // Output state derivative vector
     return {state.dx,
@@ -333,10 +337,12 @@ inline DState hopper_dynamics(State state,
                               double t,
                               const Environment& env,
                               ControllerTarget target,
-                              ControllerParams params)
+                              ControllerParams params,
+                              ControllerState& cstate)
 {
     // Get motor torques from low-level controller
-    const MotorTorques motors = low_level_controller(state, t, target, params);
+    const MotorTorques motors = low_level_controller(state, t, env, target,
+                                                     params, cstate);
 
     // Get hardstop forces
     const MotorTorques hardstops = hardstop_forces(state, env);
@@ -372,19 +378,24 @@ inline TimeState integration_step(TimeState ts,
                                   double dt,
                                   const Environment& env,
                                   ControllerTarget target,
-                                  ControllerParams params)
+                                  ControllerParams params,
+                                  ControllerState& cstate)
 {
     // Performs a 4th order runge-kutta integration step
     // dt is passed explicitly instead of using env.dt so that the
     // integrator can take a short final timestep
     const State   s0 = ts.state;
-    const DState ds0 = hopper_dynamics(s0, ts.time, env, target, params);
+    const DState ds0 = hopper_dynamics(s0, ts.time, env,
+                                       target, params, cstate);
     const State   s1 = s0 + ds0 * (dt/2);
-    const DState ds1 = hopper_dynamics(s1, ts.time + dt/2, env, target, params);
+    const DState ds1 = hopper_dynamics(s1, ts.time + dt/2, env,
+                                       target, params, cstate);
     const State   s2 = s0 + ds1 * (dt/2);
-    const DState ds2 = hopper_dynamics(s2, ts.time + dt/2, env, target, params);
+    const DState ds2 = hopper_dynamics(s2, ts.time + dt/2, env,
+                                       target, params, cstate);
     const State   s3 = s0 + ds2 * dt;
-    const DState ds3 = hopper_dynamics(s3, ts.time + dt, env, target, params);
+    const DState ds3 = hopper_dynamics(s3, ts.time + dt, env,
+                                       target, params, cstate);
     return {ts.time + dt, s0 + (ds0 + 2*ds1 + 2*ds2 + ds3) * (dt/6)};
 }
 
@@ -400,22 +411,24 @@ StateSeries simulate_hopper(State initial,
                             double stop_time,
                             Environment env,
                             ControllerTarget target,
-
                             ControllerParams params)
 {
     // Initialize output vector
     StateSeries output = {{0.0, initial}};
     output.reserve(stop_time / env.dt);
 
+    // Initialize low-level controller state
+    ControllerState cstate;
+
     // Step simulation forward until next timestep will put it over stop time
     while (output.back().time + env.dt < stop_time)
         output.push_back(integration_step(output.back(), env.dt,
-                                          env, target, params));
+                                          env, target, params, cstate));
 
     // Take a short final step to hit the desired stop time
     const double dt_final = stop_time - output.back().time;
     output.push_back(integration_step(output.back(), dt_final,
-                                      env, target, params));
+                                      env, target, params, cstate));
 
     return output;
 }

@@ -7,7 +7,7 @@ foot_mass:              0.4
 length_stiffness:       1e4
 length_damping:         1e1
 length_motor_inertia:   1e-3
-length_motor_damping:   1e-2
+length_motor_damping:   1e-1
 length_motor_ratio:     16
 length_min:             0.3
 length_max:             1
@@ -16,7 +16,7 @@ length_max:             1
 angle_stiffness:        1e4
 angle_damping:          1e1
 angle_motor_inertia:    1e-3
-angle_motor_damping:    1e-2
+angle_motor_damping:    1e-1
 angle_motor_ratio:      16
 angle_min:              -1.5
 angle_max:              1.5
