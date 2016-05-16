@@ -5,7 +5,7 @@ foot_mass:              0.4
 
 # Leg length parameters
 length_stiffness:       1e4
-length_damping:         1e1
+length_damping:         1e2
 length_motor_inertia:   1e-3
 length_motor_damping:   1e-1
 length_motor_ratio:     16
@@ -14,7 +14,7 @@ length_max:             1
 
 # Leg angle parameters
 angle_stiffness:        1e4
-angle_damping:          1e1
+angle_damping:          1e2
 angle_motor_inertia:    1e-3
 angle_motor_damping:    1e-1
 angle_motor_ratio:      16
@@ -24,8 +24,8 @@ angle_max:              1.5
 # Environmental data
 gravity:                9.81
 ground: [x          y          stiffness  damping    friction  ]
-         -1e3       0          1e5        1e2        1
-         1e3        0          1e5        1e2        1
+         -1e3       0          1e5        4e2        1
+         1e3        0          1e5        4e2        1
 
 # Simulation details
 dt:                     1e-4
