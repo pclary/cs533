@@ -116,15 +116,15 @@ inline std::pair<GroundData, Vec2> nearest_ground_point(double x, double y,
     // Check whether point is on the ground side (right hand side) of the line
     const double dxg = env.ground[min_index + 1].x - env.ground[min_index].x;
     const double dyg = env.ground[min_index + 1].y - env.ground[min_index].y;
-    const double dxp = point.x - env.ground[min_index].x;
-    const double dyp = point.y - env.ground[min_index].y;
+    const double dxp = x - env.ground[min_index].x;
+    const double dyp = y - env.ground[min_index].y;
     const double cross_product = (dxg * dyp) - (dyg * dxp);
     const bool in_ground = cross_product <= 0.0;
 
     // Calculate ground normal
     const double dist = std::sqrt(min_dist2);
-    const double normal_x = (in_ground ? -1.0 * 1.0) * (x - min_x_line) / dist;
-    const double normal_y = (in_ground ? -1.0 * 1.0) * (y - min_y_line) / dist;
+    const double normal_x = (in_ground ? -1.0 : 1.0) * (x - min_x_line) / dist;
+    const double normal_y = (in_ground ? -1.0 : 1.0) * (y - min_y_line) / dist;
 
     // Get interpolated ground properties
     const double ground_stiffness = env.ground[min_index].stiffness +
@@ -272,8 +272,11 @@ inline void aerial_foot_phase(double& h, double& dh, double ddh,
     // Calculate the time of the first zero crossing
     // Different quadratic solution depending on whether the
     // trajectory is concave up or down
-    const double t_zc =
-        (-dh + (ddh > 0 ? -1.0 : 1.0) * std::sqrt(discriminant)) / ddh;
+    const double sqrt_disc = std::sqrt(discriminant);
+    const double t_zc_p = (-dh + sqrt_disc) / ddh;
+    const double t_zc_n = (-dh - sqrt_disc) / ddh;
+    const double t_zc = (ddh > 0 ? std::fmin(t_zc_n, t_zc_p) :
+                         std::fmax(t_zc_n, t_zc_p));
 
     // Check whether this completes the timestep and add the
     // appropriate values to the foot position and time
@@ -308,34 +311,96 @@ inline void ground_foot_phase(double& h, double& dh, double ddh,
     // for all damping cases
     const double wn = std::sqrt(gd.stiffness / env.foot_mass);
     const double zeta = gd.damping/2 / std::sqrt(gd.stiffness * env.foot_mass);
-    const double phase = -std::atan2(h, ((wn * zeta + dh) / wn);
-    const double t_peak = std::modf(phase + M_PI/2, 2*M_PI) / wn;
+    const double phase = -std::atan2(h, (wn * zeta * h + dh) / wn);
+    const double t_peak = std::fmod(phase + M_PI/2, 2*M_PI) / wn;
     const double h_offset = (ddh * env.foot_mass) / gd.stiffness;
 
-    // Use a few iterations of Newton's method to find the zero crossing
+    // Use different solutions for different damping cases
+    double tn, hn, dhn;
     if (zeta < 0.99)
     {
         // Underdamped
         const double wd = wn * std::sqrt(1.0 - zeta * zeta);
         const double l = wn * zeta;
+        const double c1 = h;
+        const double c2 = (wn * zeta * h + dh) / wd;
 
+        // Check whether the first peak is above the ground
+        const double h_peak =
+            h_offset + std::exp(-l*t_peak)*(c1*std::cos(wd*t_peak) +
+                                        c2*std::sin(wd*t_peak));
+        if (h_peak > 0)
+        {
+            // First iteration starts 1/4 period behind the first peak,
+            // which should be a roughly linear sloped region near the
+            // zero crossing
+            tn = std::fmax(t_peak - M_PI / 2 / wn, 0);
+            for (int i = 0; i < 2; ++i)
+            {
+                hn = h_offset + std::exp(-l*tn)*(c1*std::cos(wd*tn) +
+                                                 c2*std::sin(wd*tn));
+                dhn = std::exp(-l*tn)*(c2*wd*std::cos(tn*wd) -
+                                       c1*wd*std::sin(tn*wd)) -
+                    l*std::exp(-l*tn)*(c1*std::cos(tn*wd) + c2*std::sin(tn*wd));
+                tn -= hn / dhn;
+            }
+
+            // Make sure the result is within bounds
+            tn = clamp(tn, 0, std::fmin(dt - t, t_peak));
+
+            // Get the final state
+            hn = h_offset + std::exp(-l*tn)*(c1*std::cos(wd*tn) +
+                                             c2*std::sin(wd*tn));
+            dhn = std::exp(-l*tn)*(c2*wd*std::cos(tn*wd) -
+                                   c1*wd*std::sin(tn*wd)) -
+                l*std::exp(-l*tn)*(c1*std::cos(tn*wd) + c2*std::sin(tn*wd));
+        }
+        else
+        {
+            // Foot does not go above ground, complete the timestep here
+            tn = dt - t;
+            hn = h_offset + std::exp(-l*tn)*(c1*std::cos(wd*tn) +
+                                             c2*std::sin(wd*tn));
+            dhn = std::exp(-l*tn)*(c2*wd*std::cos(tn*wd) -
+                                   c1*wd*std::sin(tn*wd)) -
+                l*std::exp(-l*tn)*(c1*std::cos(tn*wd) + c2*std::sin(tn*wd));
+        }
     }
     else if (zeta > 1.01)
     {
         // Overdamped
+        // Do later
+        tn = dt - t;
+        hn = h + dh * tn;
+        dhn = hn;
     }
     else
     {
         // Use the critically damped solution when zeta is close to 1
         // to prevent numerical issues
+        // Do later
+        tn = dt - t;
+        hn = h + dh * tn;
+        dhn = hn;
     }
 
     // Compute the new tangential velocity and position using friction
     // and acceleration impulse
     // Ground normal force for friction is estimated by adding the
     // normal spring force and the impulse from the dh calculation
+    const double dp_delta_max = gd.friction * (std::fmax(-ddh * tn, 0) +
+                                               std::fmax(dhn - dh, 0));
+    const double dp_new = dp + (ddp * tn);
+    const double dpn = dp_new -
+        std::copysign(std::fmin(dp_delta_max, std::fabs(dp_new)), dp_new);
+    const double pn = p + (tn * (dp + dpn) / 2);
 
-
+    // Set output values
+    t += tn;
+    h = hn;
+    dh = dhn;
+    p = p;//pn;
+    dp = 0*dpn;
 }
 
 
@@ -397,7 +462,7 @@ inline State foot_ground_contact(State state_old,
     const double angle_spring_torque_old =
         (env.angle_stiffness * (state_old.theta_eq - state_old.theta)) +
         (env.angle_damping * (state_old.dtheta_eq - state_old.dtheta));
-    const double angle_spring_force_old = angle_spring_torque_old / state_old.l;
+    const double angle_spring_force_old = 0*angle_spring_torque_old / state_old.l;
     const double spring_force_x = (l_x_old * length_spring_force_old) +
         (theta_x_old * angle_spring_force_old);
     const double spring_force_y = (l_y_old * length_spring_force_old) +
@@ -405,10 +470,10 @@ inline State foot_ground_contact(State state_old,
 
     const double ddh =
         (normal.x * (spring_force_x / env.foot_mass)) +
-        (normal.y * ((spring_force_y / env) - env.gravity));
+        (normal.y * ((spring_force_y / env.foot_mass) - env.gravity));
     const double ddp =
         (tangent.x * (spring_force_x / env.foot_mass)) +
-        (tangent.y * ((spring_force_y / env) - env.gravity));
+        (tangent.y * ((spring_force_y / env.foot_mass) - env.gravity));
 
     // If starting above the ground, continue until contact is made
     if (h_old > 0.0)
@@ -418,11 +483,31 @@ inline State foot_ground_contact(State state_old,
     // timestep duration is reached
     while (t < dt)
     {
-        ground_foot_phase(h, dh, ddh, p, dp, ddp, t, dt, gd);
+        ground_foot_phase(h, dh, ddh, p, dp, ddp, t, dt, gd, env);
         if (t >= dt)
             break;
         aerial_foot_phase(h, dh, ddh, p, dp, ddp, t, dt);
     }
+
+    // Transform from ground-relative coordinates to new state
+    State state_mod = state_new;
+    const double foot_x_mod = gd.x + (normal.x * h) + (tangent.x * p);
+    const double foot_y_mod = gd.y + (normal.y * h) + (tangent.y * p);
+    const double foot_dx_mod = (normal.x * dh) + (tangent.x * dp);
+    const double foot_dy_mod = (normal.y * dh) + (tangent.y * dp);
+    const double fbdiff_x = foot_x_mod - state_mod.x;
+    const double fbdiff_y = foot_y_mod - state_mod.y;
+    state_mod.l = std::sqrt((fbdiff_x * fbdiff_x) + (fbdiff_y * fbdiff_y));
+    state_mod.theta = std::atan2(fbdiff_x, -fbdiff_y) - state_mod.phi;
+    const double l_x_mod = fbdiff_x / state_mod.l;
+    const double l_y_mod = fbdiff_y / state_mod.l;
+    const double theta_x_mod = -l_y_mod;
+    const double theta_y_mod = l_x_mod;
+    state_mod.dl = (l_x_mod * foot_dx_mod) + (l_y_mod * foot_dy_mod);
+    state_mod.dtheta =
+        ((theta_x_mod * foot_dx_mod) +
+         (theta_y_mod * foot_dy_mod)) / state_mod.l - state_mod.dphi;
+    return state_mod;
 }
 
 
@@ -501,19 +586,33 @@ inline TimeState integration_step(TimeState ts,
     // Performs a 4th order runge-kutta integration step
     // dt is passed explicitly instead of using env.dt so that the
     // integrator can take a short final timestep
-    const State   s0 = ts.state;
-    const DState ds0 = hopper_dynamics(s0, ts.time, env,
+    // After each step, modify the resulting state to take ground
+    // contact into acount
+    const State   s0  = ts.state;
+    const DState ds0t = hopper_dynamics(s0, ts.time, env,
                                        target, params, cstate);
-    const State   s1 = s0 + ds0 * (dt/2);
-    const DState ds1 = hopper_dynamics(s1, ts.time + dt/2, env,
+    const State   s1t = s0 + ds0t * (dt/2);
+    const State   s1  = foot_ground_contact(s0, s1t, dt/2, env);
+    const DState ds0  = (s1 - s0) / (dt/2);
+
+    const DState ds1t = hopper_dynamics(s1t, ts.time + dt/2, env,
                                        target, params, cstate);
-    const State   s2 = s0 + ds1 * (dt/2);
-    const DState ds2 = hopper_dynamics(s2, ts.time + dt/2, env,
+    const State   s2t = s0 + ds1t * (dt/2);
+    const State   s2  = foot_ground_contact(s0, s2t, dt/2, env);
+    const DState ds1  = (s2 - s0) / (dt/2);
+
+    const DState ds2t = hopper_dynamics(s2t, ts.time + dt/2, env,
                                        target, params, cstate);
-    const State   s3 = s0 + ds2 * dt;
-    const DState ds3 = hopper_dynamics(s3, ts.time + dt, env,
+    const State   s3t = s0 + ds2t * dt;
+    const State   s3  = foot_ground_contact(s0, s3t, dt, env);
+    const DState ds2  = (s3 - s0) / dt;
+
+    const DState ds3t = hopper_dynamics(s3t, ts.time + dt, env,
                                        target, params, cstate);
-    return {ts.time + dt, s0 + (ds0 + 2*ds1 + 2*ds2 + ds3) * (dt/6)};
+    const State   s4t = s0 + (ds0t + 2*ds1t + 2*ds2t + ds3t) * (dt/6);
+    const State   s4  = foot_ground_contact(s0, s4t, dt, env);
+
+    return {ts.time + dt, s4};
 }
 
 

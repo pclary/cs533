@@ -17,7 +17,7 @@ int main()
 
     // Display output
     vis::Hopper hopper(env);
-    hopper.animate(ss);
+    hopper.animate(ss, 0.1);
 
     // Save output
     sim::save(ss, "statedata.txt");
