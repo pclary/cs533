@@ -78,23 +78,87 @@ inline double fade_derivative(double x, double lower, double upper, double fade)
 }
 
 
+inline double pd_controller(double err, double derr, double kp, double kd)
+{
+    return (kp * err) + (kd * derr);
+}
+
+
 /*******************************************************************************
  * Low-level controller
  ******************************************************************************/
 
-struct ControllerState
+enum class Phase
 {
-
+    Stance,
+    Flight
 };
 
-inline MotorTorques low_level_controller(State,
-                                         double,
-                                         const Environment&,
-                                         ControllerTarget,
-                                         ControllerParams,
-                                         ControllerState&)
+
+struct ControllerState
 {
-    return {0, 0};
+    double last_theta;
+    Phase phase;
+};
+
+
+inline void low_level_controller_update(State state,
+                                        double,
+                                        const Environment&,
+                                        ControllerTarget,
+                                        ControllerParams,
+                                        ControllerState& cstate)
+{
+    // Record old phase before updating
+    const Phase last_phase = cstate.phase;
+
+    // Use leg compression as the stance/flight detector
+    const double l_comp = state.l_eq - state.l;
+    if (l_comp < 0.0)
+        cstate.phase = Phase::Flight;
+    else if (l_comp > 0.1)
+        cstate.phase = Phase::Stance;
+
+    // On stance -> flight transition, record the leg angle
+    if (last_phase == Phase::Stance && cstate.phase == Phase::Flight)
+        cstate.last_theta = state.theta;
+}
+
+
+inline MotorTorques low_level_controller_output(State state,
+                                                double,
+                                                const Environment&,
+                                                ControllerTarget,
+                                                ControllerParams,
+                                                const ControllerState& cstate)
+{
+    // Leg extension after "midstance"
+    const double l_eq_target = (state.dy > 0 ? 0.75 : 0.7);
+    const double l_force = pd_controller(l_eq_target - state.l_eq,
+                                         0.0 - state.dl_eq,
+                                         1e4, 1e2);
+
+    // Angle motor behavior depends on phase
+    double theta_torque = 0.0;
+    switch (cstate.phase)
+    {
+    case Phase::Flight:
+    {
+        // Mirror takeoff angle
+        const double theta_eq_target = -cstate.last_theta;
+        const double dtheta_eq_target = 0.0;
+        theta_torque = pd_controller(theta_eq_target - state.theta_eq,
+                                     dtheta_eq_target - state.dtheta_eq,
+                                     1e4, 1e2);
+    }
+    break;
+    case Phase::Stance:
+        // Stablize body
+        theta_torque = pd_controller(state.phi, state.dphi, 1e2, 1e1);
+        break;
+    }
+
+    return {l_force, theta_torque};
 }
 
 
@@ -338,11 +402,11 @@ inline DState hopper_dynamics(State state,
                               const Environment& env,
                               ControllerTarget target,
                               ControllerParams params,
-                              ControllerState& cstate)
+                              const ControllerState& cstate)
 {
     // Get motor torques from low-level controller
-    const MotorTorques motors = low_level_controller(state, t, env, target,
-                                                     params, cstate);
+    const MotorTorques motors =
+        low_level_controller_output(state, t, env, target, params, cstate);
 
     // Get hardstop forces
     const MotorTorques hardstops = hardstop_forces(state, env);
@@ -382,6 +446,9 @@ inline TimeState integration_step(TimeState ts,
                                   ControllerParams params,
                                   ControllerState& cstate)
 {
+    // Update the state of the low-level controller once per major step
+    low_level_controller_update(ts.state, ts.time, env, target, params, cstate);
+
     // Performs a 4th order runge-kutta integration step
     // dt is passed explicitly instead of using env.dt so that the
     // integrator can take a short final timestep
