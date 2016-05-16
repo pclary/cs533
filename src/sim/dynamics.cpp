@@ -352,11 +352,12 @@ inline DState hopper_dynamics(State state,
     const double l_y = -std::cos(state.theta + state.phi);
     const double theta_x = -l_y;
     const double theta_y = l_x;
+    const double dtheta_abs = state.dtheta + state.dphi;
     const PointState foot_point = {
         state.x + (l_x * state.l),
         state.y + (l_y * state.l),
-        state.dx + (l_x * state.dl) + (theta_x * state.l * state.dtheta),
-        state.dy + (l_y * state.dl) + (theta_y * state.l * state.dtheta)};
+        state.dx + (l_x * state.dl) + (theta_x * state.l * dtheta_abs),
+        state.dy + (l_y * state.dl) + (theta_y * state.l * dtheta_abs)};
     const Force foot_ground_force = ground_contact_model(foot_point, env);
 
     const ExternalForces ext = {
