@@ -6,7 +6,7 @@ namespace sim
 {
 
 
-struct GroundVertex
+struct GroundData
 {
     double x;         // Horizontal location of this ground vertex
     double y;         // Vertical location of this ground vertex
@@ -39,7 +39,7 @@ struct Environment
     double angle_max;             // Leg angle upper limit hardstop
 
     double gravity;               // Gravitational acceleration
-    std::vector<GroundVertex> ground; // The ground defined as a polyline
+    std::vector<GroundData> ground; // The ground defined as a polyline
 
     double dt;                    // Simulation timestep
     double length_hardstop_kp;    // Proportional constant for length hardstop

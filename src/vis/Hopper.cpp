@@ -136,9 +136,9 @@ void Hopper::update(sim::State state)
 void Hopper::animate(sim::StateSeries states, double rate)
 {
     sf::Clock clock;
-    double clock_time;
+    double clock_time = 0.f;
     double t_start = states.front().time;
-    double t;
+    double t = t_start;
 
     while (isAlive() && t <= states.back().time)
     {

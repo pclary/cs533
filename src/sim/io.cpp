@@ -53,7 +53,7 @@ void save(const Environment& env, std::string filename)
     file << std::endl << "# Environmental data" << std::endl;
     WRITE(env, file, gravity);
 
-    // Write ground vertex data
+    // Write ground data
     file << "ground: ";
     file << "[x          y          stiffness  damping    friction  ]";
     file << std::endl;
@@ -161,7 +161,7 @@ void load(Environment& env, std::string filename)
     while (std::getline(file, line))
     {
         std::istringstream iss(line);
-        GroundVertex v;
+        GroundData v;
         iss >> v.x >> v.y >> v.stiffness >> v.damping >> v.friction;
         if (iss)
             env.ground.push_back(v);
