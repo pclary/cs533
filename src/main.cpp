@@ -11,16 +11,15 @@ int main()
     // Initial state
     sim::State initial = {0.0, 0.7, 0.0, 0.7, 0.7, 0.3, 0.3,
                           1.0, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0};
-    sim::StateSeries ss = {{0.0, initial}};
 
-    // Simulate several steps
+    // Simulate until first touchdown
+    sim::StateSeries ss = sim::simulate_hopper(initial, 1.0, env, {}, {});
+
+    // Simulate step by step until the window is closed
     vis::Hopper hopper(env);
     while (hopper.isAlive())
     {
-        ss = sim::simulate_hopper(ss.back().state, 5.0, env, {1}, {});
+        ss = sim::simulate_hopper(ss.back().state, 3.0, env, {1}, {});
         hopper.animate(ss);
     }
-
-    // Save output
-    // sim::save(ss, "statedata.txt");
 }
