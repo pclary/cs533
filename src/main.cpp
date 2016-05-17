@@ -15,9 +15,9 @@ int main()
 
     // Simulate several steps
     vis::Hopper hopper(env);
-    for (int i = 0; i < 30; ++i)
+    while (hopper.isAlive())
     {
-        ss = sim::simulate_hopper(ss.back().state, 5.0, env, {}, {});
+        ss = sim::simulate_hopper(ss.back().state, 5.0, env, {1}, {});
         hopper.animate(ss);
     }
 

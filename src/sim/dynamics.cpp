@@ -112,7 +112,7 @@ inline void low_level_controller_update(State state,
     const double l_comp = state.l_eq - state.l;
     if (l_comp < 0.0)
         cstate.phase = Phase::Flight;
-    else if (l_comp > 0.01)
+    else if (l_comp > 0.01 && state.dl < 0.0)
         cstate.phase = Phase::Stance;
 }
 
@@ -301,6 +301,20 @@ inline Force ground_contact_model(PointState point, const Environment& env)
     const double cross_product = (dxg * dyp) - (dyg * dxp);
     if (cross_product > 0.0)
         return {0.0, 0.0};
+
+    // If the point is a vertex, also check the next line
+    if (min_p == 1.0 && min_index < env.ground.size() - 2)
+    {
+        const double dxg = env.ground[min_index + 2].x -
+            env.ground[min_index + 1].x;
+        const double dyg = env.ground[min_index + 2].y -
+            env.ground[min_index + 1].y;
+        const double dxp = point.x - env.ground[min_index + 1].x;
+        const double dyp = point.y - env.ground[min_index + 1].y;
+        const double cross_product = (dxg * dyp) - (dyg * dxp);
+        if (cross_product > 0.0)
+            return {0.0, 0.0};
+    }
 
     // If execution reaches here, the point is in the ground
     // Note that if the test point is outside the bounds of the

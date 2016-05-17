@@ -72,7 +72,7 @@ Hopper::Hopper(const sim::Environment& env) :
     }
 
     for (auto gv : env.ground)
-        ground.append({sf::Vector2f(gv.x, gv.y), sf::Color::Blue});
+        ground.append({sf::Vector2f(gv.x, -gv.y), sf::Color::Blue});
 }
 
 
