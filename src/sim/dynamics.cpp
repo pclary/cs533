@@ -97,8 +97,7 @@ enum class Phase
 
 struct ControllerState
 {
-    double last_theta;
-    Phase phase;
+    Phase phase = Phase::Flight;
 };
 
 
@@ -109,34 +108,28 @@ inline void low_level_controller_update(State state,
                                         ControllerParams,
                                         ControllerState& cstate)
 {
-    // Record old phase before updating
-    const Phase last_phase = cstate.phase;
-
     // Use leg compression as the stance/flight detector
     const double l_comp = state.l_eq - state.l;
     if (l_comp < 0.0)
         cstate.phase = Phase::Flight;
-    else if (l_comp > 0.1)
+    else if (l_comp > 0.01)
         cstate.phase = Phase::Stance;
-
-    // On stance -> flight transition, record the leg angle
-    if (last_phase == Phase::Stance && cstate.phase == Phase::Flight)
-        cstate.last_theta = state.theta;
 }
 
 
 inline MotorTorques low_level_controller_output(State state,
                                                 double,
-                                                const Environment&,
-                                                ControllerTarget,
-                                                ControllerParams,
+                                                const Environment& env,
+                                                ControllerTarget target,
+                                                ControllerParams params,
                                                 const ControllerState& cstate)
 {
     // Leg extension after "midstance"
-    const double l_eq_target = (state.dy > 0 ? 0.75 : 0.7);
-    const double l_force = pd_controller(l_eq_target - state.l_eq,
-                                         0.0 - state.dl_eq,
-                                         1e4, 1e2);
+    const double l_eq_target =
+        (state.dy > 0 ? 0.73 + params.leg_extension : 0.7);
+    const double l_torque = pd_controller(l_eq_target - state.l_eq,
+                                          0.0 - state.dl_eq,
+                                          1e4, 1e2);
 
     // Angle motor behavior depends on phase
     double theta_torque = 0.0;
@@ -144,8 +137,9 @@ inline MotorTorques low_level_controller_output(State state,
     {
     case Phase::Flight:
     {
-        // Mirror takeoff angle
-        const double theta_eq_target = -cstate.last_theta;
+        // Raibert stabilization
+        const double theta_eq_target =
+            (state.dx * 0.2) - (target.velocity * 0.1) - state.phi;
         const double dtheta_eq_target = 0.0;
         theta_torque = pd_controller(theta_eq_target - state.theta_eq,
                                      dtheta_eq_target - state.dtheta_eq,
@@ -154,11 +148,18 @@ inline MotorTorques low_level_controller_output(State state,
     break;
     case Phase::Stance:
         // Stablize body
-        theta_torque = pd_controller(state.phi, state.dphi, 1e2, 1e1);
+        theta_torque = pd_controller(state.phi, state.dphi, 1e3, 1e2) +
+            params.horizontal_push;
+        // Prevent slip
+        const double l_force = env.length_stiffness * (state.l_eq - state.l);
+        const double friction_limit =
+            0.5 * std::fmax(l_force, 0) / state.l / env.angle_motor_ratio;
+        theta_torque = clamp(theta_torque, -friction_limit, friction_limit);
         break;
     }
 
-    return {l_force, theta_torque};
+    return {clamp(l_torque, -1e2, 1e2),
+            clamp(theta_torque, -1e2, 1e2)};
 }
 
 
@@ -468,6 +469,20 @@ inline TimeState integration_step(TimeState ts,
 }
 
 
+inline bool detect_flight(State state, const Environment& env)
+{
+    const double l_comp = state.l_eq - state.l;
+    return l_comp < 0.005;
+}
+
+
+inline bool detect_stance(State state, const Environment& env)
+{
+    const double l_comp = state.l_eq - state.l;
+    return l_comp > 0.01 && state.dl < 0.0;
+}
+
+
 } // namespace
 
 
@@ -483,20 +498,25 @@ StateSeries simulate_hopper(State initial,
 {
     // Initialize output vector
     StateSeries output = {{0.0, initial}};
-    output.reserve(stop_time / env.dt);
 
     // Initialize low-level controller state
     ControllerState cstate;
 
+    // Flag used for stopping condition
+    bool flight_latched = false;
+
     // Step simulation forward until next timestep will put it over stop time
     while (output.back().time + env.dt < stop_time)
+    {
         output.push_back(integration_step(output.back(), env.dt,
                                           env, target, params, cstate));
 
-    // Take a short final step to hit the desired stop time
-    const double dt_final = stop_time - output.back().time;
-    output.push_back(integration_step(output.back(), dt_final,
-                                      env, target, params, cstate));
+        // Stop at the first touchdown after a flight phase
+        if (!flight_latched && detect_flight(output.back().state, env))
+            flight_latched = true;
+        if (flight_latched && detect_stance(output.back().state, env))
+            break;
+    }
 
     return output;
 }

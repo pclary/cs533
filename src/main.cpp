@@ -9,16 +9,18 @@ int main()
     sim::load(env, "environment.txt");
 
     // Initial state
-    sim::State initial = {0.0, 1.0, 0.0, 0.7, 0.7, 0.1, 0.1,
-                          0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    sim::State initial = {0.0, 0.7, 0.0, 0.7, 0.7, 0.3, 0.3,
+                          1.0, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0};
+    sim::StateSeries ss = {{0.0, initial}};
 
-    // Simulate for a while
-    sim::StateSeries ss = sim::simulate_hopper(initial, 10.0, env, {}, {});
-
-    // Display output
+    // Simulate several steps
     vis::Hopper hopper(env);
-    hopper.animate(ss);
+    for (int i = 0; i < 30; ++i)
+    {
+        ss = sim::simulate_hopper(ss.back().state, 5.0, env, {}, {});
+        hopper.animate(ss);
+    }
 
     // Save output
-    sim::save(ss, "statedata.txt");
+    // sim::save(ss, "statedata.txt");
 }

@@ -10,12 +10,13 @@ namespace sim
 
 struct ControllerTarget
 {
+    double velocity;
 };
 
 
 struct ControllerParams
 {
-    double energy_injection;
+    double leg_extension;
     double horizontal_push;
 };
 
