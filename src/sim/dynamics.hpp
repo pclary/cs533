@@ -10,14 +10,14 @@ namespace sim
 
 struct ControllerTarget
 {
-    double velocity;
+    double velocity; // typical: -3 to 3, higher if already moving quickly
 };
 
 
 struct ControllerParams
 {
-    double leg_extension;
-    double horizontal_push;
+    double leg_extension;   // typical: 0 to 0.1
+    double horizontal_push; // typical: -1000 to 1000
 };
 
 
