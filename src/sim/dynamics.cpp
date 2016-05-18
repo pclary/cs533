@@ -148,7 +148,7 @@ inline MotorTorques low_level_controller_output(State state,
     break;
     case Phase::Stance:
         // Stablize body
-        theta_torque = pd_controller(state.phi, state.dphi, 1e3, 1e2) +
+        theta_torque = pd_controller(state.phi, state.dphi, 1e3, 1e2) -
             params.horizontal_push;
         // Prevent slip
         const double l_force = env.length_stiffness * (state.l_eq - state.l);
