@@ -125,10 +125,10 @@ inline MotorTorques low_level_controller_output(State state,
                                                 const ControllerState& cstate)
 {
     // Leg extension after "midstance"
-    const double l_eq_target =
+    const double l_target =
         (state.dy > 0 ? 0.73 + params.leg_extension : 0.7);
-    const double l_torque = pd_controller(l_eq_target - state.l_eq,
-                                          0.0 - state.dl_eq,
+    const double l_torque = pd_controller(l_target - state.l,
+                                          0.0 - state.dl,
                                           1e4, 1e2);
 
     // Angle motor behavior depends on phase
@@ -138,11 +138,11 @@ inline MotorTorques low_level_controller_output(State state,
     case Phase::Flight:
     {
         // Raibert stabilization
-        const double theta_eq_target =
+        const double theta_target =
             (state.dx * 0.22) - (target.velocity * 0.15) - state.phi;
-        const double dtheta_eq_target = 0.0;
-        theta_torque = pd_controller(theta_eq_target - state.theta_eq,
-                                     dtheta_eq_target - state.dtheta_eq,
+        const double dtheta_target = 0.0;
+        theta_torque = pd_controller(theta_target - state.theta,
+                                     dtheta_target - state.dtheta,
                                      1e4, 1e2);
     }
     break;
@@ -172,34 +172,23 @@ inline DState hopper_eom(State state,
                          MotorTorques motors,
                          ExternalForces ext)
 {
-    // With no motor inertia, but still motor and spring damping,
-    // equilibrium length/angle derivatives are calculated directly
-    state.dl_eq =
-        ((env.length_motor_ratio * motors.length) +
-         (env.length_stiffness * (state.l - state.l_eq)) +
-         (env.length_damping * state.dl)) /
-        ((env.length_motor_ratio * env.length_motor_damping) +
-         env.length_damping);
-    state.dtheta_eq =
-        ((env.angle_motor_ratio * motors.angle) +
-         (env.angle_stiffness * (state.theta - state.theta_eq)) +
-         (env.angle_damping * state.dtheta)) /
-        ((env.angle_motor_ratio * env.angle_motor_damping) +
-         env.angle_damping);
-
-    // Calculate motor gap torques, taking damping into account
-    const double angle_motor_gap_torque = motors.angle -
-        (env.angle_motor_damping * state.dtheta_eq * env.angle_motor_ratio);
-    // const double length_motor_gap_torque = motors.length -
-    //     (env.length_motor_damping * state.dl_eq * env.length_motor_ratio);
+    // With no motor inertia, motor damping, or spring damping,
+    // equilibrium length/angle positions are calculated directly;
+    // Hardstops are applied here
+    const double l_eq =
+        clamp(state.l + ((motors.length * env.length_motor_ratio)
+                         / env.length_stiffness),
+              env.length_min, env.length_max);
+    const double theta_eq =
+        clamp(state.theta + ((motors.angle * env.angle_motor_ratio)
+                             / env.angle_stiffness),
+              env.angle_min, env.angle_max);
 
     // Calculate internal spring forces
     const double length_spring_force =
-        (env.length_stiffness * (state.l_eq - state.l)) +
-        (env.length_damping * (state.dl_eq - state.dl));
+        env.length_stiffness * (state.l_eq - state.l);
     const double angle_spring_torque =
-        (env.angle_stiffness * (state.theta_eq - state.theta)) +
-        (env.angle_damping * (state.dtheta_eq - state.dtheta));
+        env.angle_stiffness * (state.theta_eq - state.theta);
     const double angle_spring_force = angle_spring_torque / state.l;
 
     // Get basis vectors for internal spring forces
@@ -214,8 +203,7 @@ inline DState hopper_eom(State state,
         (theta_x * angle_spring_force);
     const double force_body_y = ext.body_y - (l_y * length_spring_force) -
         (theta_y * angle_spring_force);
-    const double torque_body_phi = ext.body_phi - angle_motor_gap_torque -
-        (1.0 - 1.0 / env.angle_motor_ratio) * angle_spring_torque;
+    const double torque_body_phi = ext.body_phi - angle_spring_torque;
 
     // Acceleration of body
     const double ddx = force_body_x / env.body_mass;
@@ -223,8 +211,10 @@ inline DState hopper_eom(State state,
     const double ddphi = torque_body_phi / env.body_inertia;
 
     // No acceleration calculation for leg equilibrium positions
-    // because of inertialess motors; instead, the calculated dl_eq
-    // and dtheta_eq are used directly by the integrator
+    // because of inertialess motors; instead, the calculated l_eq and
+    // theta_eq are used directly by the integrator, and derivatives
+    // are calculated using finite differencing (not used by dynamics,
+    // so just for information)
 
     // Convert external forces on foot to relative polar coordinate acceleration
     // Gravity is included in the external forces
@@ -242,13 +232,14 @@ inline DState hopper_eom(State state,
                             (2 * state.dl * dtheta_abs)) / state.l - ddphi;
 
     // Output state derivative vector
+    // Return calculated l_eq and theta_eq though derivative slots
     return {state.dx,
             state.dy,
             state.dphi,
             state.dl,
-            state.dl_eq,
+            l_eq,
             state.dtheta,
-            state.dtheta_eq,
+            theta_eq,
             ddx,
             ddy,
             ddphi,
@@ -389,40 +380,6 @@ inline Force ground_contact_model(PointState point, const Environment& env)
 }
 
 
-inline MotorTorques hardstop_forces(State state, const Environment& env)
-{
-    // Compute how much each DOF is over/under the hardstops
-    const double l_eq_over = state.l_eq -
-        clamp(state.l_eq, env.length_min, env.length_max);
-    const double theta_eq_over = state.theta_eq -
-        clamp(state.theta_eq, env.angle_min, env.angle_max);
-
-    // Fade the derivative term in near the hardstops for smoother dynamics
-    const double l_eq_dfade = fade_derivative(state.l_eq,
-                                              env.length_min,
-                                              env.length_max,
-                                              env.length_hardstop_dfade);
-    const double theta_eq_dfade = fade_derivative(state.theta_eq,
-                                                  env.angle_min,
-                                                  env.angle_max,
-                                                  env.angle_hardstop_dfade);
-
-    // Compute hardstop forces as a spring+damper system
-    const double l_eq_force = -(env.length_hardstop_kp * l_eq_over) -
-        (env.length_hardstop_kd * l_eq_dfade * state.dl_eq);
-    const double theta_eq_torque = -(env.angle_hardstop_kp * theta_eq_over) -
-        (env.angle_hardstop_kd * theta_eq_dfade * state.dtheta_eq);
-
-    // Clamp forces before returning them
-    return {clamp(l_eq_force,
-                  -env.length_hardstop_fmax,
-                  env.length_hardstop_fmax),
-            clamp(theta_eq_torque,
-                  -env.angle_hardstop_fmax,
-                  env.angle_hardstop_fmax)};
-}
-
-
 inline DState hopper_dynamics(State state,
                               double t,
                               const Environment& env,
@@ -433,9 +390,6 @@ inline DState hopper_dynamics(State state,
     // Get motor torques from low-level controller
     const MotorTorques motors =
         low_level_controller_output(state, t, env, target, params, cstate);
-
-    // Get hardstop forces
-    const MotorTorques hardstops = hardstop_forces(state, env);
 
     // Calculate external forces
     const double l_x = std::sin(state.theta + state.phi);
@@ -457,7 +411,7 @@ inline DState hopper_dynamics(State state,
         foot_ground_force.x,
         foot_ground_force.y - (env.foot_mass * env.gravity)};
 
-    return hopper_eom(state, env, motors + hardstops, ext);
+    return hopper_eom(state, env, motors, ext);
 }
 
 
@@ -478,30 +432,39 @@ inline TimeState integration_step(TimeState ts,
     // Performs a 4th order runge-kutta integration step
     // dt is passed explicitly instead of using env.dt so that the
     // integrator can take a short final timestep
-    // Inertialess motors: use ds*.*_eq as s*.d*_eq
+    // Inertialess motors: use ds*.*_eq as s*.*_eq and calculate the
+    // corresponding derivatives with a finite difference
     const State   s0 = ts.state;
     const DState ds0 = hopper_dynamics(s0, ts.time, env,
                                        target, params, cstate);
     State   s1 = s0 + ds0 * (dt/2);
-    s1.dl_eq = ds0.l_eq;
-    s1.dtheta_eq = ds0.theta_eq;
+    s1.l_eq = ds0.l_eq;
+    s1.theta_eq = ds0.theta_eq;
+    s1.dl_eq = (s1.l_eq - s0.l_eq) / (dt/2);
+    s1.dtheta_eq = (s1.theta_eq - s0.theta_eq) / (dt/2);
     const DState ds1 = hopper_dynamics(s1, ts.time + dt/2, env,
                                        target, params, cstate);
     State   s2 = s0 + ds1 * (dt/2);
-    s2.dl_eq = ds1.l_eq;
-    s2.dtheta_eq = ds1.theta_eq;
+    s2.l_eq = ds1.l_eq;
+    s2.theta_eq = ds1.theta_eq;
+    s2.dl_eq = (s2.l_eq - s0.l_eq) / (dt/2);
+    s2.dtheta_eq = (s2.theta_eq - s0.theta_eq) / (dt/2);
     const DState ds2 = hopper_dynamics(s2, ts.time + dt/2, env,
                                        target, params, cstate);
     State   s3 = s0 + ds2 * dt;
-    s3.dl_eq = ds2.l_eq;
-    s3.dtheta_eq = ds2.theta_eq;
+    s3.l_eq = ds2.l_eq;
+    s3.theta_eq = ds2.theta_eq;
+    s3.dl_eq = (s3.l_eq - s0.l_eq) / dt;
+    s3.dtheta_eq = (s3.theta_eq - s0.theta_eq) / dt;
     const DState ds3 = hopper_dynamics(s3, ts.time + dt, env,
                                        target, params, cstate);
-    const DState dsfinal = (ds0 + 2*ds1 + 2*ds2 + ds3) / 6;
-    State         sfinal = s0 + dsfinal * dt;
-    sfinal.dl_eq = dsfinal.l_eq;
-    sfinal.dtheta_eq = dsfinal.theta_eq;
-    return {ts.time + dt, sfinal};
+    const DState ds4 = (ds0 + 2*ds1 + 2*ds2 + ds3) / 6;
+    State         s4 = s0 + ds4 * dt;
+    s4.l_eq = ds4.l_eq;
+    s4.theta_eq = ds4.theta_eq;
+    s4.dl_eq = (s4.l_eq - s0.l_eq) / dt;
+    s4.dtheta_eq = (s4.theta_eq - s0.theta_eq) / dt;
+    return {ts.time + dt, s4};
 }
 
 
