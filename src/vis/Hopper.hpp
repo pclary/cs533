@@ -1,7 +1,7 @@
 #pragma once
 
 #include <SFML/Graphics.hpp>
-#include "sim/sim.hpp"
+#include "../sim/sim.hpp"
 
 
 namespace vis
