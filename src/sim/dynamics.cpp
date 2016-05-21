@@ -139,7 +139,7 @@ inline MotorTorques low_level_controller_output(State state,
     {
         // Raibert stabilization
         const double theta_eq_target =
-            (state.dx * 0.3) - (target.velocity * 0.23) - state.phi;
+            (state.dx * 0.22) - (target.velocity * 0.15) - state.phi;
         const double dtheta_eq_target = 0.0;
         theta_torque = pd_controller(theta_eq_target - state.theta_eq,
                                      dtheta_eq_target - state.dtheta_eq,
@@ -172,11 +172,26 @@ inline DState hopper_eom(State state,
                          MotorTorques motors,
                          ExternalForces ext)
 {
+    // With no motor inertia, but still motor and spring damping,
+    // equilibrium length/angle derivatives are calculated directly
+    state.dl_eq =
+        ((env.length_motor_ratio * motors.length) +
+         (env.length_stiffness * (state.l - state.l_eq)) +
+         (env.length_damping * state.dl)) /
+        ((env.length_motor_ratio * env.length_motor_damping) +
+         env.length_damping);
+    state.dtheta_eq =
+        ((env.angle_motor_ratio * motors.angle) +
+         (env.angle_stiffness * (state.theta - state.theta_eq)) +
+         (env.angle_damping * state.dtheta)) /
+        ((env.angle_motor_ratio * env.angle_motor_damping) +
+         env.angle_damping);
+
     // Calculate motor gap torques, taking damping into account
     const double angle_motor_gap_torque = motors.angle -
         (env.angle_motor_damping * state.dtheta_eq * env.angle_motor_ratio);
-    const double length_motor_gap_torque = motors.length -
-        (env.length_motor_damping * state.dl_eq * env.length_motor_ratio);
+    // const double length_motor_gap_torque = motors.length -
+    //     (env.length_motor_damping * state.dl_eq * env.length_motor_ratio);
 
     // Calculate internal spring forces
     const double length_spring_force =
@@ -207,13 +222,9 @@ inline DState hopper_eom(State state,
     const double ddy = force_body_y / env.body_mass;
     const double ddphi = torque_body_phi / env.body_inertia;
 
-    // Acceleration of leg equilibrium positions
-    const double ddtheta_eq = (angle_motor_gap_torque -
-                               angle_spring_torque / env.angle_motor_ratio) /
-        (env.angle_motor_ratio * env.angle_motor_inertia);
-    const double ddl_eq = (length_motor_gap_torque -
-                           length_spring_force / env.length_motor_ratio) /
-        (env.length_motor_ratio * env.length_motor_inertia);
+    // No acceleration calculation for leg equilibrium positions
+    // because of inertialess motors; instead, the calculated dl_eq
+    // and dtheta_eq are used directly by the integrator
 
     // Convert external forces on foot to relative polar coordinate acceleration
     // Gravity is included in the external forces
@@ -242,9 +253,9 @@ inline DState hopper_eom(State state,
             ddy,
             ddphi,
             ddl,
-            ddl_eq,
+            0.0,
             ddtheta,
-            ddtheta_eq};
+            0.0};
 }
 
 
@@ -467,19 +478,30 @@ inline TimeState integration_step(TimeState ts,
     // Performs a 4th order runge-kutta integration step
     // dt is passed explicitly instead of using env.dt so that the
     // integrator can take a short final timestep
+    // Inertialess motors: use ds*.*_eq as s*.d*_eq
     const State   s0 = ts.state;
     const DState ds0 = hopper_dynamics(s0, ts.time, env,
                                        target, params, cstate);
-    const State   s1 = s0 + ds0 * (dt/2);
+    State   s1 = s0 + ds0 * (dt/2);
+    s1.dl_eq = ds0.l_eq;
+    s1.dtheta_eq = ds0.theta_eq;
     const DState ds1 = hopper_dynamics(s1, ts.time + dt/2, env,
                                        target, params, cstate);
-    const State   s2 = s0 + ds1 * (dt/2);
+    State   s2 = s0 + ds1 * (dt/2);
+    s2.dl_eq = ds1.l_eq;
+    s2.dtheta_eq = ds1.theta_eq;
     const DState ds2 = hopper_dynamics(s2, ts.time + dt/2, env,
                                        target, params, cstate);
-    const State   s3 = s0 + ds2 * dt;
+    State   s3 = s0 + ds2 * dt;
+    s3.dl_eq = ds2.l_eq;
+    s3.dtheta_eq = ds2.theta_eq;
     const DState ds3 = hopper_dynamics(s3, ts.time + dt, env,
                                        target, params, cstate);
-    return {ts.time + dt, s0 + (ds0 + 2*ds1 + 2*ds2 + ds3) * (dt/6)};
+    const DState dsfinal = (ds0 + 2*ds1 + 2*ds2 + ds3) / 6;
+    State         sfinal = s0 + dsfinal * dt;
+    sfinal.dl_eq = dsfinal.l_eq;
+    sfinal.dtheta_eq = dsfinal.theta_eq;
+    return {ts.time + dt, sfinal};
 }
 
 
