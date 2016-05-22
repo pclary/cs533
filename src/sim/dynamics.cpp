@@ -19,27 +19,33 @@ namespace
  * Data structures
  ******************************************************************************/
 
-struct ExternalForces
+struct Force
 {
-    double body_x;
-    double body_y;
-    double body_phi;
-    double foot_x;
-    double foot_y;
+    double x;
+    double y;
 };
 
 
-struct MotorTorques
+struct ExternalForces
+{
+    Force  body;
+    double body_phi;
+    Force  foot_a;
+    Force  foot_b;
+};
+
+
+struct LegMotorTorques
 {
     double length;
     double angle;
 };
 
 
-struct Force
+struct MotorTorques
 {
-    double x;
-    double y;
+    LegMotorTorques leg_a;
+    LegMotorTorques leg_b;
 };
 
 
@@ -52,9 +58,22 @@ struct PointState
 };
 
 
-inline MotorTorques operator+ (const MotorTorques& a, const MotorTorques& b)
+inline Force operator+ (const Force& a, const Force& b)
+{
+    return {a.x + b.x, a.y + b.y};
+}
+
+
+inline LegMotorTorques operator+ (const LegMotorTorques& a,
+                                  const LegMotorTorques& b)
 {
     return {a.length + b.length, a.angle + b.angle};
+}
+
+
+inline MotorTorques operator+ (const MotorTorques& a, const MotorTorques& b)
+{
+    return {a.leg_a + b.leg_a, a.leg_b + b.leg_b};
 }
 
 
@@ -88,78 +107,32 @@ inline double pd_controller(double err, double derr, double kp, double kd)
  * Low-level controller
  ******************************************************************************/
 
-enum class Phase
-{
-    Stance,
-    Flight
-};
-
-
 struct ControllerState
 {
-    Phase phase = Phase::Flight;
 };
 
 
-inline void low_level_controller_update(State state,
+inline void low_level_controller_update(State,
                                         double,
                                         const Environment&,
                                         ControllerTarget,
                                         ControllerParams,
-                                        ControllerState& cstate)
+                                        ControllerState&)
 {
-    // Use leg compression as the stance/flight detector
-    const double l_comp = state.l_eq - state.l;
-    if (l_comp < 0.0)
-        cstate.phase = Phase::Flight;
-    else if (l_comp > 0.01 && state.dl < 0.0)
-        cstate.phase = Phase::Stance;
 }
 
 
-inline MotorTorques low_level_controller_output(State state,
+inline MotorTorques low_level_controller_output(State,
                                                 double,
-                                                const Environment& env,
-                                                ControllerTarget target,
-                                                ControllerParams params,
-                                                const ControllerState& cstate)
+                                                const Environment&,
+                                                ControllerTarget,
+                                                ControllerParams,
+                                                const ControllerState&)
 {
-    // Leg extension after "midstance"
-    const double l_eq_target =
-        (state.dy > 0 ? 0.73 + params.leg_extension : 0.7);
-    const double l_torque = pd_controller(l_eq_target - state.l_eq,
-                                          0.0 - state.dl_eq,
-                                          1e4, 1e2);
-
-    // Angle motor behavior depends on phase
-    double theta_torque = 0.0;
-    switch (cstate.phase)
-    {
-    case Phase::Flight:
-    {
-        // Raibert stabilization
-        const double theta_eq_target =
-            (state.dx * 0.3) - (target.velocity * 0.23) - state.phi;
-        const double dtheta_eq_target = 0.0;
-        theta_torque = pd_controller(theta_eq_target - state.theta_eq,
-                                     dtheta_eq_target - state.dtheta_eq,
-                                     1e4, 1e2);
-    }
-    break;
-    case Phase::Stance:
-        // Stablize body
-        theta_torque = pd_controller(state.phi, state.dphi, 1e3, 1e2) -
-            params.horizontal_push;
-        // Prevent slip
-        const double l_force = env.length_stiffness * (state.l_eq - state.l);
-        const double friction_limit =
-            0.5 * std::fmax(l_force, 0) / state.l / env.angle_motor_ratio;
-        theta_torque = clamp(theta_torque, -friction_limit, friction_limit);
-        break;
-    }
-
-    return {clamp(l_torque, -12.2, 12.2),
-            clamp(theta_torque, -12.2, 12.2)};
+    return {{clamp(0, -12.2, 12.2),
+             clamp(0, -12.2, 12.2)},
+            {clamp(0, -12.2, 12.2),
+             clamp(0, -12.2, 12.2)}};
 }
 
 
@@ -173,34 +146,55 @@ inline DState hopper_eom(State state,
                          ExternalForces ext)
 {
     // Calculate motor gap torques, taking damping into account
-    const double angle_motor_gap_torque = motors.angle -
-        (env.angle_motor_damping * state.dtheta_eq * env.angle_motor_ratio);
-    const double length_motor_gap_torque = motors.length -
-        (env.length_motor_damping * state.dl_eq * env.length_motor_ratio);
+    const double angle_motor_gap_torque_a = motors.leg_a.angle -
+        (env.angle_motor_damping * state.leg_a.dtheta_eq *
+         env.angle_motor_ratio);
+    const double length_motor_gap_torque_a = motors.leg_a.length -
+        (env.length_motor_damping * state.leg_a.dl_eq * env.length_motor_ratio);
+    const double angle_motor_gap_torque_b = motors.leg_b.angle -
+        (env.angle_motor_damping * state.leg_b.dtheta_eq *
+         env.angle_motor_ratio);
+    const double length_motor_gap_torque_b = motors.leg_b.length -
+        (env.length_motor_damping * state.leg_b.dl_eq * env.length_motor_ratio);
 
     // Calculate internal spring forces
-    const double length_spring_force =
-        (env.length_stiffness * (state.l_eq - state.l)) +
-        (env.length_damping * (state.dl_eq - state.dl));
-    const double angle_spring_torque =
-        (env.angle_stiffness * (state.theta_eq - state.theta)) +
-        (env.angle_damping * (state.dtheta_eq - state.dtheta));
-    const double angle_spring_force = angle_spring_torque / state.l;
+    const double length_spring_force_a =
+        (env.length_stiffness * (state.leg_a.l_eq - state.leg_a.l)) +
+        (env.length_damping * (state.leg_a.dl_eq - state.leg_a.dl));
+    const double angle_spring_torque_a =
+        (env.angle_stiffness * (state.leg_a.theta_eq - state.leg_a.theta)) +
+        (env.angle_damping * (state.leg_a.dtheta_eq - state.leg_a.dtheta));
+    const double angle_spring_force_a = angle_spring_torque_a / state.leg_a.l;
+    const double length_spring_force_b =
+        (env.length_stiffness * (state.leg_b.l_eq - state.leg_b.l)) +
+        (env.length_damping * (state.leg_b.dl_eq - state.leg_b.dl));
+    const double angle_spring_torque_b =
+        (env.angle_stiffness * (state.leg_b.theta_eq - state.leg_b.theta)) +
+        (env.angle_damping * (state.leg_b.dtheta_eq - state.leg_b.dtheta));
+    const double angle_spring_force_b = angle_spring_torque_b / state.leg_b.l;
 
     // Get basis vectors for internal spring forces
     // Positive when acting on the foot, negate for body
-    const double l_x = std::sin(state.theta + state.phi);
-    const double l_y = -std::cos(state.theta + state.phi);
-    const double theta_x = -l_y;
-    const double theta_y = l_x;
+    const double l_x_a = std::sin(state.leg_a.theta + state.phi);
+    const double l_y_a = -std::cos(state.leg_a.theta + state.phi);
+    const double theta_x_a = -l_y_a;
+    const double theta_y_a = l_x_a;
+    const double l_x_b = std::sin(state.leg_b.theta + state.phi);
+    const double l_y_b = -std::cos(state.leg_b.theta + state.phi);
+    const double theta_x_b = -l_y_b;
+    const double theta_y_b = l_x_b;
 
     // Forces on body
-    const double force_body_x = ext.body_x - (l_x * length_spring_force) -
-        (theta_x * angle_spring_force);
-    const double force_body_y = ext.body_y - (l_y * length_spring_force) -
-        (theta_y * angle_spring_force);
-    const double torque_body_phi = ext.body_phi - angle_motor_gap_torque -
-        (1.0 - 1.0 / env.angle_motor_ratio) * angle_spring_torque;
+    const double force_body_x = ext.body.x -
+        (l_x_a * length_spring_force_a) - (theta_x_a * angle_spring_force_a) -
+        (l_x_b * length_spring_force_b) - (theta_x_b * angle_spring_force_b);
+    const double force_body_y = ext.body.y -
+        (l_y_a * length_spring_force_a) - (theta_y_a * angle_spring_force_a) -
+        (l_y_b * length_spring_force_b) - (theta_y_b * angle_spring_force_b);
+    const double torque_body_phi = ext.body_phi -
+        angle_motor_gap_torque_a - angle_motor_gap_torque_b -
+        ((1.0 - 1.0 / env.angle_motor_ratio) *
+         (angle_spring_torque_a + angle_spring_torque_b));
 
     // Acceleration of body
     const double ddx = force_body_x / env.body_mass;
@@ -208,43 +202,73 @@ inline DState hopper_eom(State state,
     const double ddphi = torque_body_phi / env.body_inertia;
 
     // Acceleration of leg equilibrium positions
-    const double ddtheta_eq = (angle_motor_gap_torque -
-                               angle_spring_torque / env.angle_motor_ratio) /
+    const double ddtheta_eq_a = (angle_motor_gap_torque_a -
+                               angle_spring_torque_a / env.angle_motor_ratio) /
         (env.angle_motor_ratio * env.angle_motor_inertia);
-    const double ddl_eq = (length_motor_gap_torque -
-                           length_spring_force / env.length_motor_ratio) /
+    const double ddl_eq_a = (length_motor_gap_torque_a -
+                           length_spring_force_a / env.length_motor_ratio) /
+        (env.length_motor_ratio * env.length_motor_inertia);
+    const double ddtheta_eq_b = (angle_motor_gap_torque_b -
+                               angle_spring_torque_b / env.angle_motor_ratio) /
+        (env.angle_motor_ratio * env.angle_motor_inertia);
+    const double ddl_eq_b = (length_motor_gap_torque_b -
+                           length_spring_force_b / env.length_motor_ratio) /
         (env.length_motor_ratio * env.length_motor_inertia);
 
     // Convert external forces on foot to relative polar coordinate acceleration
     // Gravity is included in the external forces
-    const double accel_offset_foot_x = ext.foot_x / env.foot_mass - ddx;
-    const double accel_offset_foot_y = ext.foot_y / env.foot_mass - ddy;
-    const double accel_foot_l = (length_spring_force / env.foot_mass) +
-        (accel_offset_foot_x * l_x) + (accel_offset_foot_y * l_y);
-    const double accel_foot_theta = (angle_spring_force / env.foot_mass) +
-        (accel_offset_foot_x * theta_x) + (accel_offset_foot_y * theta_y);
+    const double accel_offset_foot_x_a = ext.foot_a.x / env.foot_mass - ddx;
+    const double accel_offset_foot_y_a = ext.foot_a.y / env.foot_mass - ddy;
+    const double accel_foot_l_a = (length_spring_force_a / env.foot_mass) +
+        (accel_offset_foot_x_a * l_x_a) + (accel_offset_foot_y_a * l_y_a);
+    const double accel_foot_theta_a = (angle_spring_force_a / env.foot_mass) +
+        (accel_offset_foot_x_a * theta_x_a) +
+        (accel_offset_foot_y_a * theta_y_a);
+    const double accel_offset_foot_x_b = ext.foot_b.x / env.foot_mass - ddx;
+    const double accel_offset_foot_y_b = ext.foot_b.y / env.foot_mass - ddy;
+    const double accel_foot_l_b = (length_spring_force_b / env.foot_mass) +
+        (accel_offset_foot_x_b * l_x_b) + (accel_offset_foot_y_b * l_y_b);
+    const double accel_foot_theta_b = (angle_spring_force_b / env.foot_mass) +
+        (accel_offset_foot_x_b * theta_x_b) +
+        (accel_offset_foot_y_b * theta_y_b);
 
     // Acceleration of actual leg positions
-    const double dtheta_abs = state.dtheta + state.dphi;
-    const double ddl = accel_foot_l + (state.l * dtheta_abs * dtheta_abs);
-    const double ddtheta = (accel_foot_theta -
-                            (2 * state.dl * dtheta_abs)) / state.l - ddphi;
+    const double dtheta_abs_a = state.leg_a.dtheta + state.dphi;
+    const double ddl_a = accel_foot_l_a +
+        (state.leg_a.l * dtheta_abs_a * dtheta_abs_a);
+    const double ddtheta_a =
+        (accel_foot_theta_a - (2 * state.leg_a.dl * dtheta_abs_a)) /
+        state.leg_a.l - ddphi;
+    const double dtheta_abs_b = state.leg_b.dtheta + state.dphi;
+    const double ddl_b = accel_foot_l_b +
+        (state.leg_b.l * dtheta_abs_b * dtheta_abs_b);
+    const double ddtheta_b =
+        (accel_foot_theta_b - (2 * state.leg_b.dl * dtheta_abs_b)) /
+        state.leg_b.l - ddphi;
 
     // Output state derivative vector
     return {state.dx,
             state.dy,
             state.dphi,
-            state.dl,
-            state.dl_eq,
-            state.dtheta,
-            state.dtheta_eq,
             ddx,
             ddy,
             ddphi,
-            ddl,
-            ddl_eq,
-            ddtheta,
-            ddtheta_eq};
+            {state.leg_a.dl,
+             state.leg_a.dl_eq,
+             state.leg_a.dtheta,
+             state.leg_a.dtheta_eq,
+             ddl_a,
+             ddl_eq_a,
+             ddtheta_a,
+             ddtheta_eq_a},
+            {state.leg_b.dl,
+             state.leg_b.dl_eq,
+             state.leg_b.dtheta,
+             state.leg_b.dtheta_eq,
+             ddl_b,
+             ddl_eq_b,
+             ddtheta_b,
+             ddtheta_eq_b}};
 }
 
 
@@ -378,7 +402,7 @@ inline Force ground_contact_model(PointState point, const Environment& env)
 }
 
 
-inline MotorTorques hardstop_forces(State state, const Environment& env)
+inline LegMotorTorques hardstop_forces(LegState state, const Environment& env)
 {
     // Compute how much each DOF is over/under the hardstops
     const double l_eq_over = state.l_eq -
@@ -412,6 +436,21 @@ inline MotorTorques hardstop_forces(State state, const Environment& env)
 }
 
 
+inline PointState foot_state(LegState state, State body_state)
+{
+    const double l_x = std::sin(state.theta + body_state.phi);
+    const double l_y = -std::cos(state.theta + body_state.phi);
+    const double theta_x = -l_y;
+    const double theta_y = l_x;
+    const double dtheta_abs = state.dtheta + body_state.dphi;
+    return {
+        body_state.x + (l_x * state.l),
+        body_state.y + (l_y * state.l),
+        body_state.dx + (l_x * state.dl) + (theta_x * state.l * dtheta_abs),
+        body_state.dy + (l_y * state.dl) + (theta_y * state.l * dtheta_abs)};
+}
+
+
 inline DState hopper_dynamics(State state,
                               double t,
                               const Environment& env,
@@ -424,27 +463,21 @@ inline DState hopper_dynamics(State state,
         low_level_controller_output(state, t, env, target, params, cstate);
 
     // Get hardstop forces
-    const MotorTorques hardstops = hardstop_forces(state, env);
+    const MotorTorques hardstops =
+        {hardstop_forces(state.leg_a, env), hardstop_forces(state.leg_b, env)};
 
     // Calculate external forces
-    const double l_x = std::sin(state.theta + state.phi);
-    const double l_y = -std::cos(state.theta + state.phi);
-    const double theta_x = -l_y;
-    const double theta_y = l_x;
-    const double dtheta_abs = state.dtheta + state.dphi;
-    const PointState foot_point = {
-        state.x + (l_x * state.l),
-        state.y + (l_y * state.l),
-        state.dx + (l_x * state.dl) + (theta_x * state.l * dtheta_abs),
-        state.dy + (l_y * state.dl) + (theta_y * state.l * dtheta_abs)};
-    const Force foot_ground_force = ground_contact_model(foot_point, env);
+    const PointState foot_point_a = foot_state(state.leg_a, state);
+    const Force foot_ground_force_a = ground_contact_model(foot_point_a, env);
+    const PointState foot_point_b = foot_state(state.leg_b, state);
+    const Force foot_ground_force_b = ground_contact_model(foot_point_b, env);
+    const Force foot_gravity = {0.0, -env.foot_mass * env.gravity};
 
     const ExternalForces ext = {
+        {0.0, -(env.body_mass * env.gravity)},
         0.0,
-        -(env.body_mass * env.gravity),
-        0.0,
-        foot_ground_force.x,
-        foot_ground_force.y - (env.foot_mass * env.gravity)};
+        foot_ground_force_a + foot_gravity,
+        foot_ground_force_b + foot_gravity};
 
     return hopper_eom(state, env, motors + hardstops, ext);
 }
@@ -483,14 +516,14 @@ inline TimeState integration_step(TimeState ts,
 }
 
 
-inline bool detect_flight(State state, const Environment& env)
+inline bool detect_flight(LegState state, const Environment& env)
 {
     const double l_comp = state.l_eq - state.l;
     return l_comp < 0.005;
 }
 
 
-inline bool detect_stance(State state, const Environment& env)
+inline bool detect_stance(LegState state, const Environment& env)
 {
     const double l_comp = state.l_eq - state.l;
     return l_comp > 0.01 && state.dl < 0.0;
@@ -517,7 +550,8 @@ StateSeries simulate_hopper(State initial,
     ControllerState cstate;
 
     // Flag used for stopping condition
-    bool flight_latched = false;
+    bool flight_latched_a = false;
+    bool flight_latched_b = false;
 
     // Step simulation forward until next timestep will put it over stop time
     while (output.back().time + env.dt < stop_time)
@@ -526,9 +560,13 @@ StateSeries simulate_hopper(State initial,
                                           env, target, params, cstate));
 
         // Stop at the first touchdown after a flight phase
-        if (!flight_latched && detect_flight(output.back().state, env))
-            flight_latched = true;
-        if (flight_latched && detect_stance(output.back().state, env))
+        if (!flight_latched_a && detect_flight(output.back().state.leg_a, env))
+            flight_latched_a = true;
+        if (flight_latched_a && detect_stance(output.back().state.leg_a, env))
+            break;
+        if (!flight_latched_b && detect_flight(output.back().state.leg_b, env))
+            flight_latched_b = true;
+        if (flight_latched_b && detect_stance(output.back().state.leg_b, env))
             break;
     }
 

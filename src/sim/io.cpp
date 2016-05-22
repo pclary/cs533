@@ -90,27 +90,35 @@ void save(const StateSeries& states, std::string filename)
     file.precision(4);
 
     // Write states from vector
-    file << "t       x           y           phi         l           l_eq        theta       theta_eq    dx          dy          dphi        dl          dl_eq       dtheta      dtheta_eq" << std::endl;
+    file << "t       x           y           phi         dx          dy          dphi        l           l_eq        theta       theta_eq    dl          dl_eq       dtheta      dtheta_eq   l           l_eq        theta       theta_eq    dl          dl_eq       dtheta      dtheta_eq" << std::endl;
     for (const auto ts : states)
     {
         const int w = 11;
         file << std::fixed;
-        file << std::setw(6) << ts.time            << " ";
+        file << std::setw(6) << ts.time                  << " ";
         file << std::scientific;
-        file << std::setw(w) << ts.state.x         << " ";
-        file << std::setw(w) << ts.state.y         << " ";
-        file << std::setw(w) << ts.state.phi       << " ";
-        file << std::setw(w) << ts.state.l         << " ";
-        file << std::setw(w) << ts.state.l_eq      << " ";
-        file << std::setw(w) << ts.state.theta     << " ";
-        file << std::setw(w) << ts.state.theta_eq  << " ";
-        file << std::setw(w) << ts.state.dx        << " ";
-        file << std::setw(w) << ts.state.dy        << " ";
-        file << std::setw(w) << ts.state.dphi      << " ";
-        file << std::setw(w) << ts.state.dl        << " ";
-        file << std::setw(w) << ts.state.dl_eq     << " ";
-        file << std::setw(w) << ts.state.dtheta    << " ";
-        file << std::setw(w) << ts.state.dtheta_eq << std::endl;
+        file << std::setw(w) << ts.state.x               << " ";
+        file << std::setw(w) << ts.state.y               << " ";
+        file << std::setw(w) << ts.state.phi             << " ";
+        file << std::setw(w) << ts.state.dx              << " ";
+        file << std::setw(w) << ts.state.dy              << " ";
+        file << std::setw(w) << ts.state.dphi            << " ";
+        file << std::setw(w) << ts.state.leg_a.l         << " ";
+        file << std::setw(w) << ts.state.leg_a.l_eq      << " ";
+        file << std::setw(w) << ts.state.leg_a.theta     << " ";
+        file << std::setw(w) << ts.state.leg_a.theta_eq  << " ";
+        file << std::setw(w) << ts.state.leg_a.dl        << " ";
+        file << std::setw(w) << ts.state.leg_a.dl_eq     << " ";
+        file << std::setw(w) << ts.state.leg_a.dtheta    << " ";
+        file << std::setw(w) << ts.state.leg_a.dtheta_eq << " ";
+        file << std::setw(w) << ts.state.leg_b.l         << " ";
+        file << std::setw(w) << ts.state.leg_b.l_eq      << " ";
+        file << std::setw(w) << ts.state.leg_b.theta     << " ";
+        file << std::setw(w) << ts.state.leg_b.theta_eq  << " ";
+        file << std::setw(w) << ts.state.leg_b.dl        << " ";
+        file << std::setw(w) << ts.state.leg_b.dl_eq     << " ";
+        file << std::setw(w) << ts.state.leg_b.dtheta    << " ";
+        file << std::setw(w) << ts.state.leg_b.dtheta_eq << std::endl;
     }
 }
 
@@ -200,10 +208,16 @@ void load(StateSeries& states, std::string filename)
         double t;
         State s;
         iss >> t;
-        iss >> s.x  >> s.y     >> s.phi;
-        iss >> s.l  >> s.l_eq  >> s.theta  >> s.theta_eq;
-        iss >> s.dx >> s.dy    >> s.dphi;
-        iss >> s.dl >> s.dl_eq >> s.dtheta >> s.dtheta_eq;
+        iss >> s.x  >> s.y  >> s.phi;
+        iss >> s.dx >> s.dy >> s.dphi;
+        iss >> s.leg_a.l      >> s.leg_a.l_eq;
+        iss >> s.leg_a.theta  >> s.leg_a.theta_eq;
+        iss >> s.leg_a.dl     >> s.leg_a.dl_eq;
+        iss >> s.leg_a.dtheta >> s.leg_a.dtheta_eq;
+        iss >> s.leg_b.l      >> s.leg_b.l_eq;
+        iss >> s.leg_b.theta  >> s.leg_b.theta_eq;
+        iss >> s.leg_b.dl     >> s.leg_b.dl_eq;
+        iss >> s.leg_b.dtheta >> s.leg_b.dtheta_eq;
         if (iss)
             states.push_back({t, s});
     }

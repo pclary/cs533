@@ -24,9 +24,12 @@ private:
     const float body_radius;
     sf::VertexArray body_fill;
     sf::VertexArray body_outline;
-    sf::VertexArray leg;
-    sf::VertexArray spring;
-    sf::VertexArray foot;
+    sf::VertexArray leg_a;
+    sf::VertexArray spring_a;
+    sf::VertexArray foot_a;
+    sf::VertexArray leg_b;
+    sf::VertexArray spring_b;
+    sf::VertexArray foot_b;
 
     // Environment
     sf::VertexArray grid;
