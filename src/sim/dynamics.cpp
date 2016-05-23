@@ -147,18 +147,18 @@ inline double eval_trajectory(TrajectoryValues tvals, double x, double dx)
 
 const TrajectoryPoint length_trajectory[] =
 {
-    {0.0, 1.0, 0.8, 1e3, 1e1},
-    {0.4, 0.0, 0.7, 1e3, 1e1},
-    {0.6, 0.0, 0.7, 1e3, 1e1},
-    {1.0, 1.0, 0.8, 1e3, 1e1}
+    {0.0, 4.0, 0.8, 1e0, 1e2},
+    {0.4, 0.0, 0.7, 1e0, 1e2},
+    {0.6, 0.0, 0.7, 1e0, 1e2},
+    {1.0, 4.0, 0.8, 1e0, 1e2}
 };
 
 
 const TrajectoryPoint angle_trajectory[] =
 {
     {0.0, 1.0,  0.0, 0.0, 0.0},
-    {0.4, 0.0, -1.0, 1e4, 1e2},
-    {0.6, 0.0,  1.0, 1e4, 1e2},
+    {0.4, 0.0, -1.0, 1e4, 1e3},
+    {0.6, 0.0,  1.0, 1e4, 1e3},
     {1.0, 1.0,  0.0, 0.0, 0.0}
 };
 
@@ -180,8 +180,9 @@ inline void low_level_controller_update(State,
                                         ControllerParams,
                                         ControllerState& cstate)
 {
-    cstate.phase_a += 1.*dt;
-    cstate.phase_b += 1.*dt;
+    const double phase_rate = 1.0;
+    cstate.phase_a += phase_rate * dt;
+    cstate.phase_b += phase_rate * dt;
 
     // End this step when either leg's phase reaches 1
     cstate.end_step = cstate.phase_a >= 1.0 || cstate.phase_b >= 1.0;
@@ -208,20 +209,22 @@ inline void low_level_controller_update(State,
 
 inline MotorTorques low_level_controller_output(State state,
                                                 double,
-                                                const Environment& env,
+                                                const Environment&,
                                                 ControllerTarget target,
                                                 ControllerParams params,
                                                 const ControllerState& cstate)
 {
     // Evaluate length trajectory controllers
-    const double length_torque_a =
-        eval_trajectory(cstate.length_tvals_a, state.leg_a.l, state.leg_a.dl);
-    const double length_torque_b =
-        eval_trajectory(cstate.length_tvals_b, state.leg_b.l, state.leg_b.dl);
+    const double length_torque_a = eval_trajectory(cstate.length_tvals_a,
+                                                   state.leg_a.l_eq,
+                                                   state.leg_a.dl_eq);
+    const double length_torque_b = eval_trajectory(cstate.length_tvals_b,
+                                                   state.leg_b.l_eq,
+                                                   state.leg_b.dl_eq);
 
     // Angle trajectory values are modulated by velocity control and
     // horizontal push
-    const double velocity_control_angle = 0.5*state.dx - 0.22*target.velocity;
+    const double velocity_control_angle = 0.5*state.dx - 0.05*target.velocity;
 
     TrajectoryValues angle_tvals_a = cstate.angle_tvals_a;
     angle_tvals_a.target  *= velocity_control_angle;
@@ -236,15 +239,15 @@ inline MotorTorques low_level_controller_output(State state,
     angle_tvals_b.dtorque *= params.horizontal_push;
 
     // Angle torque is the sum of the leg and body angle controllers
-    const double theta_abs_a  = state.leg_a.theta  + 0*state.phi;
-    const double dtheta_abs_a = state.leg_a.dtheta + 0*state.dphi;
+    const double theta_eq_a  = state.leg_a.theta_eq;
+    const double dtheta_eq_a = state.leg_a.dtheta_eq;
     double angle_torque_a =
-        eval_trajectory(angle_tvals_a, theta_abs_a, dtheta_abs_a) +
+        eval_trajectory(angle_tvals_a, theta_eq_a, dtheta_eq_a) +
         eval_trajectory(cstate.body_angle_tvals_a, state.phi, state.dphi);
-    const double theta_abs_b  = state.leg_b.theta  + 0*state.phi;
-    const double dtheta_abs_b = state.leg_b.dtheta + 0*state.dphi;
+    const double theta_eq_b  = state.leg_b.theta_eq;
+    const double dtheta_eq_b = state.leg_b.dtheta_eq;
     double angle_torque_b =
-        eval_trajectory(angle_tvals_b, theta_abs_b, dtheta_abs_b) +
+        eval_trajectory(angle_tvals_b, theta_eq_b, dtheta_eq_b) +
         eval_trajectory(cstate.body_angle_tvals_b, state.phi, state.dphi);
 
     // Need to figure out a good way to only apply this during stance

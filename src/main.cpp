@@ -23,8 +23,8 @@ int main()
     vis::Biped biped(env);
     while (biped.isAlive())
     {
-        std::cout << ss.back().state.dx << std::endl;
-        ss = sim::simulate_hopper(ss.back().state, 3.0, env, {0.4}, {}, cstate);
+        std::cout << ss.back().state.dx << " " << ss.back().state.leg_a.l_eq << std::endl;
+        ss = sim::simulate_hopper(ss.back().state, 3.0, env, {0.8}, {}, cstate);
         biped.animate(ss);
     }
 }
