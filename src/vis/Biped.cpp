@@ -47,12 +47,12 @@ Biped::Biped(const sim::Environment& env) :
     leg_a[1] = {sf::Vector2f(0.f, 1.f), sf::Color::Black};
 
     spring_a[0] = {sf::Vector2f(0.f, 0.f), sf::Color::Black};
-    spring_a[1] = {sf::Vector2f( body_radius, 1.f / 12), sf::Color::Black};
-    spring_a[2] = {sf::Vector2f(-body_radius, 3.f / 12), sf::Color::Black};
-    spring_a[3] = {sf::Vector2f( body_radius, 5.f / 12), sf::Color::Black};
-    spring_a[4] = {sf::Vector2f(-body_radius, 7.f / 12), sf::Color::Black};
-    spring_a[5] = {sf::Vector2f( body_radius, 9.f / 12), sf::Color::Black};
-    spring_a[6] = {sf::Vector2f(-body_radius, 11.f / 12), sf::Color::Black};
+    spring_a[1] = {sf::Vector2f( body_radius / 2, 1.f / 12), sf::Color::Black};
+    spring_a[2] = {sf::Vector2f(-body_radius / 2, 3.f / 12), sf::Color::Black};
+    spring_a[3] = {sf::Vector2f( body_radius / 2, 5.f / 12), sf::Color::Black};
+    spring_a[4] = {sf::Vector2f(-body_radius / 2, 7.f / 12), sf::Color::Black};
+    spring_a[5] = {sf::Vector2f( body_radius / 2, 9.f / 12), sf::Color::Black};
+    spring_a[6] = {sf::Vector2f(-body_radius / 2, 11.f / 12), sf::Color::Black};
     spring_a[7] = {sf::Vector2f(0.f, 1.f), sf::Color::Black};
 
     foot_a[0] = {sf::Vector2f(0.f, body_radius), sf::Color::Black};
@@ -63,12 +63,12 @@ Biped::Biped(const sim::Environment& env) :
     leg_b[1] = {sf::Vector2f(0.f, 1.f), sf::Color::Black};
 
     spring_b[0] = {sf::Vector2f(0.f, 0.f), sf::Color::Black};
-    spring_b[1] = {sf::Vector2f( body_radius, 1.f / 12), sf::Color::Black};
-    spring_b[2] = {sf::Vector2f(-body_radius, 3.f / 12), sf::Color::Black};
-    spring_b[3] = {sf::Vector2f( body_radius, 5.f / 12), sf::Color::Black};
-    spring_b[4] = {sf::Vector2f(-body_radius, 7.f / 12), sf::Color::Black};
-    spring_b[5] = {sf::Vector2f( body_radius, 9.f / 12), sf::Color::Black};
-    spring_b[6] = {sf::Vector2f(-body_radius, 11.f / 12), sf::Color::Black};
+    spring_b[1] = {sf::Vector2f( body_radius / 2, 1.f / 12), sf::Color::Black};
+    spring_b[2] = {sf::Vector2f(-body_radius / 2, 3.f / 12), sf::Color::Black};
+    spring_b[3] = {sf::Vector2f( body_radius / 2, 5.f / 12), sf::Color::Black};
+    spring_b[4] = {sf::Vector2f(-body_radius / 2, 7.f / 12), sf::Color::Black};
+    spring_b[5] = {sf::Vector2f( body_radius / 2, 9.f / 12), sf::Color::Black};
+    spring_b[6] = {sf::Vector2f(-body_radius / 2, 11.f / 12), sf::Color::Black};
     spring_b[7] = {sf::Vector2f(0.f, 1.f), sf::Color::Black};
 
     foot_b[0] = {sf::Vector2f(0.f, body_radius), sf::Color::Black};

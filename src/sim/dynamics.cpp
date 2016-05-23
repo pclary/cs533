@@ -147,10 +147,12 @@ inline double eval_trajectory(TrajectoryValues tvals, double x, double dx)
 
 const TrajectoryPoint length_trajectory[] =
 {
-    {0.0, 4.0, 0.8, 1e0, 1e2},
+    {0.0, 8.0, 0.8, 3e0, 3e2},
+    {0.2, 8.0, 0.8, 3e0, 3e2},
     {0.4, 0.0, 0.7, 1e0, 1e2},
     {0.6, 0.0, 0.7, 1e0, 1e2},
-    {1.0, 4.0, 0.8, 1e0, 1e2}
+    {0.8, 8.0, 0.8, 3e0, 1e2},
+    {1.0, 8.0, 0.8, 3e0, 3e2}
 };
 
 
@@ -224,7 +226,7 @@ inline MotorTorques low_level_controller_output(State state,
 
     // Angle trajectory values are modulated by velocity control and
     // horizontal push
-    const double velocity_control_angle = 0.5*state.dx - 0.05*target.velocity;
+    const double velocity_control_angle = 0.6*state.dx - 0.07*target.velocity;
 
     TrajectoryValues angle_tvals_a = cstate.angle_tvals_a;
     angle_tvals_a.target  *= velocity_control_angle;

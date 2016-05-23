@@ -1,5 +1,5 @@
 # Mass properties
-body_mass:              10
+body_mass:              30
 body_inertia:           0.3
 foot_mass:              0.4
 
@@ -8,7 +8,7 @@ length_stiffness:       1e4
 length_damping:         1e2
 length_motor_inertia:   1e-3
 length_motor_damping:   1e-1
-length_motor_ratio:     32
+length_motor_ratio:     48
 length_min:             0.3
 length_max:             1
 
