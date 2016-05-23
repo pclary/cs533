@@ -58,6 +58,16 @@ struct PointState
 };
 
 
+struct TrajectoryPoint
+{
+    double phase;
+    double torque;
+    double target;
+    double kp;
+    double kd;
+};
+
+
 inline Force operator+ (const Force& a, const Force& b)
 {
     return {a.x + b.x, a.y + b.y};
@@ -97,9 +107,37 @@ inline double fade_derivative(double x, double lower, double upper, double fade)
 }
 
 
-inline double pd_controller(double err, double derr, double kp, double kd)
+inline TrajectoryValues interp_trajectory(const TrajectoryPoint t[],
+                                          double phase)
 {
-    return (kp * err) + (kd * derr);
+    // Relies on the phase never being equal to or greater than the
+    // phase of the last point in the trajectory; this is true if
+    // phase is limited to [0, 1) and t has points defined at 0 and 1
+
+    // Find the first point with a larger phase than phase
+    size_t i = 0;
+    while (t[++i].phase < phase);
+
+    // Find the proportion used for linear interpolation
+    double phase_diff = t[i].phase - t[i - 1].phase;
+    double p = (phase - t[i - 1].phase) / phase_diff;
+
+    // Output values
+    return {phase,
+            t[i - 1].torque + p * (t[i].torque - t[i - 1].torque),
+            (t[i].torque - t[i - 1].torque) / phase_diff,
+            t[i - 1].target + p * (t[i].target - t[i - 1].target),
+            (t[i].target - t[i - 1].target) / phase_diff,
+            t[i - 1].kp + p * (t[i].kp - t[i - 1].kp),
+            t[i - 1].kd + p * (t[i].kd - t[i - 1].kd)};
+}
+
+
+inline double eval_trajectory(TrajectoryValues tvals, double x, double dx)
+{
+    return tvals.torque +
+        (tvals.kp * (tvals.target - x)) +
+        (tvals.kd * (tvals.dtarget - dx));
 }
 
 
@@ -107,32 +145,126 @@ inline double pd_controller(double err, double derr, double kp, double kd)
  * Low-level controller
  ******************************************************************************/
 
-struct ControllerState
+const TrajectoryPoint length_trajectory[] =
 {
+    {0.0, 1.0, 0.8, 1e3, 1e1},
+    {0.4, 0.0, 0.7, 1e3, 1e1},
+    {0.6, 0.0, 0.7, 1e3, 1e1},
+    {1.0, 1.0, 0.8, 1e3, 1e1}
+};
+
+
+const TrajectoryPoint angle_trajectory[] =
+{
+    {0.0, 1.0,  0.0, 0.0, 0.0},
+    {0.4, 0.0, -1.0, 1e4, 1e2},
+    {0.6, 0.0,  1.0, 1e4, 1e2},
+    {1.0, 1.0,  0.0, 0.0, 0.0}
+};
+
+
+const TrajectoryPoint body_angle_trajectory[] =
+{
+    {0.0, 0.0, 0.0, -1e3, -1e2},
+    {0.4, 0.0, 0.0,  0.0,  0.0},
+    {0.6, 0.0, 0.0,  0.0,  0.0},
+    {1.0, 0.0, 0.0, -1e3, -1e2}
 };
 
 
 inline void low_level_controller_update(State,
                                         double,
+                                        double dt,
                                         const Environment&,
                                         ControllerTarget,
                                         ControllerParams,
-                                        ControllerState&)
+                                        ControllerState& cstate)
 {
+    cstate.phase_a += 1.*dt;
+    cstate.phase_b += 1.*dt;
+
+    // End this step when either leg's phase reaches 1
+    cstate.end_step = cstate.phase_a >= 1.0 || cstate.phase_b >= 1.0;
+
+    // Keep phases within 0-1 range
+    cstate.phase_a -= floor(cstate.phase_a);
+    cstate.phase_b -= floor(cstate.phase_b);
+
+    // Get interpolated motor trajectory values
+    cstate.length_tvals_a =
+        interp_trajectory(length_trajectory, cstate.phase_a);
+    cstate.length_tvals_b =
+        interp_trajectory(length_trajectory, cstate.phase_b);
+
+    cstate.angle_tvals_a = interp_trajectory(angle_trajectory, cstate.phase_a);
+    cstate.angle_tvals_b = interp_trajectory(angle_trajectory, cstate.phase_b);
+
+    cstate.body_angle_tvals_a =
+        interp_trajectory(body_angle_trajectory, cstate.phase_a);
+    cstate.body_angle_tvals_b =
+        interp_trajectory(body_angle_trajectory, cstate.phase_b);
 }
 
 
-inline MotorTorques low_level_controller_output(State,
+inline MotorTorques low_level_controller_output(State state,
                                                 double,
-                                                const Environment&,
-                                                ControllerTarget,
-                                                ControllerParams,
-                                                const ControllerState&)
+                                                const Environment& env,
+                                                ControllerTarget target,
+                                                ControllerParams params,
+                                                const ControllerState& cstate)
 {
-    return {{clamp(0, -12.2, 12.2),
-             clamp(0, -12.2, 12.2)},
-            {clamp(0, -12.2, 12.2),
-             clamp(0, -12.2, 12.2)}};
+    // Evaluate length trajectory controllers
+    const double length_torque_a =
+        eval_trajectory(cstate.length_tvals_a, state.leg_a.l, state.leg_a.dl);
+    const double length_torque_b =
+        eval_trajectory(cstate.length_tvals_b, state.leg_b.l, state.leg_b.dl);
+
+    // Angle trajectory values are modulated by velocity control and
+    // horizontal push
+    const double velocity_control_angle = 0.5*state.dx - 0.22*target.velocity;
+
+    TrajectoryValues angle_tvals_a = cstate.angle_tvals_a;
+    angle_tvals_a.target  *= velocity_control_angle;
+    angle_tvals_a.dtarget *= velocity_control_angle;
+    angle_tvals_a.torque  *= params.horizontal_push;
+    angle_tvals_a.dtorque *= params.horizontal_push;
+
+    TrajectoryValues angle_tvals_b = cstate.angle_tvals_b;
+    angle_tvals_b.target  *= velocity_control_angle;
+    angle_tvals_b.dtarget *= velocity_control_angle;
+    angle_tvals_b.torque  *= params.horizontal_push;
+    angle_tvals_b.dtorque *= params.horizontal_push;
+
+    // Angle torque is the sum of the leg and body angle controllers
+    const double theta_abs_a  = state.leg_a.theta  + 0*state.phi;
+    const double dtheta_abs_a = state.leg_a.dtheta + 0*state.dphi;
+    double angle_torque_a =
+        eval_trajectory(angle_tvals_a, theta_abs_a, dtheta_abs_a) +
+        eval_trajectory(cstate.body_angle_tvals_a, state.phi, state.dphi);
+    const double theta_abs_b  = state.leg_b.theta  + 0*state.phi;
+    const double dtheta_abs_b = state.leg_b.dtheta + 0*state.dphi;
+    double angle_torque_b =
+        eval_trajectory(angle_tvals_b, theta_abs_b, dtheta_abs_b) +
+        eval_trajectory(cstate.body_angle_tvals_b, state.phi, state.dphi);
+
+    // Need to figure out a good way to only apply this during stance
+    // // Limit angle torques to prevent slip
+    // const double l_force_a =
+    //     env.length_stiffness * (state.leg_a.l_eq - state.leg_a.l);
+    // const double friction_limit_a =
+    //     0.5 * std::fmax(l_force_a, 0) / state.leg_a.l / env.angle_motor_ratio;
+    // angle_torque_a = clamp(angle_torque_a, -friction_limit_a, friction_limit_a);
+    // const double l_force_b =
+    //     env.length_stiffness * (state.leg_b.l_eq - state.leg_b.l);
+    // const double friction_limit_b =
+    //     0.5 * std::fmax(l_force_b, 0) / state.leg_b.l / env.angle_motor_ratio;
+    // angle_torque_b = clamp(angle_torque_b, -friction_limit_b, friction_limit_b);
+
+    // Limit torques to motor peak output
+    return {{clamp(length_torque_a, -12.2, 12.2),
+             clamp(angle_torque_a,  -12.2, 12.2)},
+            {clamp(length_torque_b, -12.2, 12.2),
+             clamp(angle_torque_b,  -12.2, 12.2)}};
 }
 
 
@@ -495,7 +627,8 @@ inline TimeState integration_step(TimeState ts,
                                   ControllerState& cstate)
 {
     // Update the state of the low-level controller once per major step
-    low_level_controller_update(ts.state, ts.time, env, target, params, cstate);
+    low_level_controller_update(ts.state, ts.time, dt,
+                                env, target, params, cstate);
 
     // Performs a 4th order runge-kutta integration step
     // dt is passed explicitly instead of using env.dt so that the
@@ -516,20 +649,6 @@ inline TimeState integration_step(TimeState ts,
 }
 
 
-inline bool detect_flight(LegState state, const Environment& env)
-{
-    const double l_comp = state.l_eq - state.l;
-    return l_comp < 0.005;
-}
-
-
-inline bool detect_stance(LegState state, const Environment& env)
-{
-    const double l_comp = state.l_eq - state.l;
-    return l_comp > 0.01 && state.dl < 0.0;
-}
-
-
 } // namespace
 
 
@@ -541,17 +660,11 @@ StateSeries simulate_hopper(State initial,
                             double stop_time,
                             Environment env,
                             ControllerTarget target,
-                            ControllerParams params)
+                            ControllerParams params,
+                            ControllerState& cstate)
 {
     // Initialize output vector
     StateSeries output = {{0.0, initial}};
-
-    // Initialize low-level controller state
-    ControllerState cstate;
-
-    // Flag used for stopping condition
-    bool flight_latched_a = false;
-    bool flight_latched_b = false;
 
     // Step simulation forward until next timestep will put it over stop time
     while (output.back().time + env.dt < stop_time)
@@ -559,14 +672,8 @@ StateSeries simulate_hopper(State initial,
         output.push_back(integration_step(output.back(), env.dt,
                                           env, target, params, cstate));
 
-        // Stop at the first touchdown after a flight phase
-        if (!flight_latched_a && detect_flight(output.back().state.leg_a, env))
-            flight_latched_a = true;
-        if (flight_latched_a && detect_stance(output.back().state.leg_a, env))
-            break;
-        if (!flight_latched_b && detect_flight(output.back().state.leg_b, env))
-            flight_latched_b = true;
-        if (flight_latched_b && detect_stance(output.back().state.leg_b, env))
+        // End this step when signalled by the controller
+        if (cstate.end_step)
             break;
     }
 

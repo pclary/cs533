@@ -21,11 +21,40 @@ struct ControllerParams
 };
 
 
+struct TrajectoryValues
+{
+    double phase;
+    double torque;
+    double dtorque;
+    double target;
+    double dtarget;
+    double kp;
+    double kd;
+};
+
+
+struct ControllerState
+{
+    double phase_a = 0.0;
+    double phase_b = 0.5;
+
+    TrajectoryValues length_tvals_a;
+    TrajectoryValues angle_tvals_a;
+    TrajectoryValues body_angle_tvals_a;
+    TrajectoryValues length_tvals_b;
+    TrajectoryValues angle_tvals_b;
+    TrajectoryValues body_angle_tvals_b;
+
+    bool end_step = false;
+};
+
+
 StateSeries simulate_hopper(State initial,
                             double sim_time,
                             Environment env,
                             ControllerTarget target,
-                            ControllerParams params);
+                            ControllerParams params,
+                            ControllerState& cstate);
 
 
 } // namespace sim

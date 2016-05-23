@@ -1,4 +1,4 @@
-#include "Hopper.hpp"
+#include "Biped.hpp"
 #include <cmath>
 #include <cstddef>
 
@@ -8,9 +8,9 @@ namespace vis
 {
 
 
-Hopper::Hopper(const sim::Environment& env) :
+Biped::Biped(const sim::Environment& env) :
     window(sf::VideoMode(640, 480, 32),
-           "Hopper Visualization",
+           "Biped Visualization",
            sf::Style::Default,
            sf::ContextSettings(0, 0, 0)),
     view(sf::Vector2f(0.f, 0.f),
@@ -96,7 +96,7 @@ Hopper::Hopper(const sim::Environment& env) :
 }
 
 
-void Hopper::update(sim::State state)
+void Biped::update(sim::State state)
 {
     // Check if visualization is still alive (i.e. window hasn't been closed)
     if (!isAlive())
@@ -168,7 +168,7 @@ void Hopper::update(sim::State state)
 }
 
 
-void Hopper::animate(sim::StateSeries states, double rate)
+void Biped::animate(sim::StateSeries states, double rate)
 {
     sf::Clock clock;
     double clock_time = 0.0;
