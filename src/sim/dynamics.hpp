@@ -45,6 +45,8 @@ struct ControllerState
     TrajectoryValues angle_tvals_b;
     TrajectoryValues body_angle_tvals_b;
 
+    double dx_midstance = 0.0;
+
     bool end_step = false;
 };
 
