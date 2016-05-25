@@ -1,4 +1,17 @@
 obj/*
 *~
 .#*
+*.sdf
+*.obj
+*.sln
+*.vcxproj
+*.suo
+*.opendb
+*.filters
+*.tlog
+*.iobj
+*.ipdb
+*.pdb
+*.log
+*.exe
 cs533
