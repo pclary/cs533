@@ -1,3 +1,4 @@
+#define _USE_MATH_DEFINES
 #include "Hopper.hpp"
 #include <cmath>
 #include <cstddef>

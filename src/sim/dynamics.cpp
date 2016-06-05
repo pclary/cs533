@@ -5,6 +5,7 @@
 #include <limits>
 #include <cstddef>
 
+#include <iostream>
 namespace sim
 {
 
@@ -139,7 +140,7 @@ inline MotorTorques low_level_controller_output(State state,
     {
         // Raibert stabilization
         const double theta_eq_target =
-            (state.dx * 0.3) - (target.velocity * 0.23) - state.phi;
+            (state.dx * 0.2) - (target.velocity * 0.1) - state.phi;
         const double dtheta_eq_target = 0.0;
         theta_torque = pd_controller(theta_eq_target - state.theta_eq,
                                      dtheta_eq_target - state.dtheta_eq,
@@ -158,8 +159,8 @@ inline MotorTorques low_level_controller_output(State state,
         break;
     }
 
-    return {clamp(l_torque, -12.2, 12.2),
-            clamp(theta_torque, -12.2, 12.2)};
+    return {clamp(l_torque, -1e2, 1e2),
+            clamp(theta_torque, -1e2, 1e2)};
 }
 
 
@@ -383,7 +384,7 @@ inline MotorTorques hardstop_forces(State state, const Environment& env)
     // Compute how much each DOF is over/under the hardstops
     const double l_eq_over = state.l_eq -
         clamp(state.l_eq, env.length_min, env.length_max);
-    const double theta_eq_over = state.theta_eq -
+     const double theta_eq_over = state.theta_eq -
         clamp(state.theta_eq, env.angle_min, env.angle_max);
 
     // Fade the derivative term in near the hardstops for smoother dynamics
